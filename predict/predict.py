@@ -17,12 +17,13 @@ import subprocess
 
 import pandas as pd
 
-sys.path.append(r"/media/medical/gasperp/projects")
+# sys.path.append(r"/media/medical/gasperp/projects")
 # import utilities
-sys.path.append(r"/media/medical/gasperp/projects/surface-distance")
+# sys.path.append(r"/media/medical/gasperp/projects/surface-distance")
 from surface_distance.compute_metrics import compute_metrices_deepmind
 
-if __name__ == "__main__":
+
+def main():
     # Set parser
     parser = argparse.ArgumentParser(
         prog="nnU-Net prediction generating script",
@@ -95,8 +96,7 @@ if __name__ == "__main__":
     # running in terminal
     args = vars(parser.parse_args())
 
-# paths definition
-if __name__ == "__main__":
+    # paths definition
     nnUNet_raw_data_base_dir = os.environ["nnUNet_raw_data_base"]
     nnUNet_preprocessed_dir = os.environ["nnUNet_preprocessed"]
     nnUNet_trained_models_dir = os.environ["RESULTS_FOLDER"]
@@ -106,9 +106,8 @@ if __name__ == "__main__":
     base_nnunet_dir_on_medical = "/media/medical/projects/head_and_neck/nnUnet"
     csv_name = "results"
 
-## checkers for input parameters
-# input task
-if __name__ == "__main__":
+    ## checkers for input parameters
+    # input task
     existing_tasks = {
         int(i.split("_")[0][-3:]): join(nnUNet_configuration_dir, i)
         for i in os.listdir(nnUNet_configuration_dir)
@@ -123,9 +122,8 @@ if __name__ == "__main__":
     task_name = Path(task_dir).name
     # e.g.: task_name = 'Task152_onkoi-2019-batch-1-and-2-both-modalities-biggest-20-organs-new'
 
-## checkers for input parameters
-# nnunet trainer class
-if __name__ == "__main__":
+    ## checkers for input parameters
+    # nnunet trainer class
     trainer_classes_list = [i.split("__")[0] for i in os.listdir(task_dir)]
     assert len(trainer_classes_list) > 0, f"no trainer subfolders found in {task_dir}"
     if args["trainer_class_name"] is None:
@@ -136,9 +134,8 @@ if __name__ == "__main__":
         else:
             args["trainer_class_name"] = trainer_classes_list[0]
 
-## checkers for input parameters
-# nnunet plans list
-if __name__ == "__main__":
+    ## checkers for input parameters
+    # nnunet plans list
     # determine which plans version was used, raise error if multiple plans exist
     plans_list = [
         i.split("__")[-1]
@@ -157,9 +154,8 @@ if __name__ == "__main__":
         task_dir, args["trainer_classes_and_plans_dir_name"]
     )
 
-## checkers for input parameters
-# fold
-if __name__ == "__main__":
+    ## checkers for input parameters
+    # fold
     available_folds = [
         i
         for i in os.listdir(trainer_classes_and_plans_dir)
@@ -188,18 +184,17 @@ if __name__ == "__main__":
         args["fold_str"] in available_folds
     ), f"--fold {args['fold']} is not a valid options, available_folds are: {available_folds}"
 
-## checkers for input parameters
-# nnunet model checkpoint to be used for inference
-if __name__ == "__main__":
+    ## checkers for input parameters
+    # nnunet model checkpoint to be used for inference
+
     models_checkpoints_dir = join(trainer_classes_and_plans_dir, args["fold_str"])
     models_checkpoints_dir_files = os.listdir(models_checkpoints_dir)
     assert any(
         [args["checkpoint_name"] in i for i in models_checkpoints_dir_files]
     ), f"--checkpoint_name {args['checkpoint_name']} is not a valid options, checkpoint_name should be a file in {models_checkpoints_dir}. Files in this directory are: {models_checkpoints_dir_files}"
 
-## data paths retrieval
-# get dict, dict of dict of filepaths: {'train': {img_name: {'images': {modality0: fpath, ...}, 'label': fpath} ...}, ...}
-if __name__ == "__main__":
+    ## data paths retrieval
+    # get dict, dict of dict of filepaths: {'train': {img_name: {'images': {modality0: fpath, ...}, 'label': fpath} ...}, ...}
     # load dataset json
     with open(join(nnUNet_preprocessed_dir, task_name, "dataset.json"), "r") as fp:
         dataset_json_dict = json.load(fp)
@@ -390,3 +385,7 @@ if __name__ == "__main__":
         logging.error(f"Failed due to the following error: {e}")
         shutil.rmtree(output_seg_dir)
         sys.exit()
+
+
+if __name__ == "__main__":
+    main()

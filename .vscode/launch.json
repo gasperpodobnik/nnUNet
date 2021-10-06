@@ -11,14 +11,37 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "python": "/opt/conda/bin/python3",
-            "args": [
+            "justMyCode": false,
+            "args":
+            // [
+            //     // "nnUNet_predict",
+            //     "-i",
+            //     "/storage/nnUnet/nnUNet_raw/nnUNet_raw_data/Task152_onkoi-2019-batch-1-and-2-both-modalities-biggest-20-organs-new/imagesTr",
+            //     "-o",
+            //     "/tmp/nnunet/predict/Task152_onkoi-2019-batch-1-and-2-both-modalities-biggest-20-organs-new/FOLD-all_TRAINER-nnUNetTrainerV2_noMirroringAxis2_PLANS-nnUNetPlansv2.1_CHK-model_final_checkpoint/out",
+            //     "-t",
+            //     "152",
+            //     "-m",
+            //     "3d_fullres",
+            //     "-f",
+            //     "all",
+            //     "-tr",
+            //     "nnUNetTrainerV2_noMirroringAxis2",
+            //     "-chk",
+            //     "model_final_checkpoint",
+            //     "--num_threads_preprocessing",
+            //     "1",
+            //     "--num_threads_nifti_save",
+            //     "1"
+            // ]
+            [
                 "--task_number",
-                "150",
+                "152",
                 "--fold",
                 "all",
                 "--gpus",
-                "0",
-                // "1"
+                // "0",
+                "1"
             ]
         }
     ]
