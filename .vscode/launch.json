@@ -35,12 +35,18 @@
             //     "1"
             // ]
             [
-                "--task_number",
-                "152",
-                "--fold",
+                "-t",
+                "150",
+                "-f",
                 "all",
                 "--gpus",
                 // "0",
+                "1",
+                "--mode",
+                "fastest",
+                "--num_threads_preprocessing",
+                "1",
+                "--num_threads_nifti_save",
                 "1"
             ]
         }

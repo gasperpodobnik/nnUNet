@@ -30,12 +30,14 @@ def main():
         description="Generate & evaluate predictions",
     )
     parser.add_argument(
+        "-t",
         "--task_number",
         type=int,
         required=True,
         help="three digit number XXX that comes after TaskXXX_YYYYYY",
     )
     parser.add_argument(
+        "-f",
         "--fold",
         type=str,
         default=None,
@@ -43,6 +45,7 @@ def main():
         help="default is None (which means that script automatically determines fold if the is only one fold subfolder, otherwise raises error)",
     )
     parser.add_argument(
+        "-o",
         "--out_dir",
         type=str,
         default=None,
@@ -55,6 +58,7 @@ def main():
         help="if this option is used, output segmentations are stored to out_dir",
     )
     parser.add_argument(
+        "-conf",
         "--configuration",
         type=str,
         default="3d_fullres",
@@ -62,6 +66,7 @@ def main():
         help="nnU-Net configuration",
     )
     parser.add_argument(
+        "-tr",
         "--trainer_class_name",
         type=str,
         default=None,
@@ -91,6 +96,9 @@ def main():
         type=int,
         default=1,
         help="nnUNet_predict parameter",
+    )
+    parser.add_argument(
+        "--mode", type=str, default="normal", help="nnUNet_predict parameter",
     )
 
     # running in terminal
@@ -302,8 +310,8 @@ def main():
                 args["num_threads_preprocessing"],
                 "--num_threads_nifti_save",
                 args["num_threads_nifti_save"],
-                # "--mode",
-                # "fast",
+                "--mode",
+                args["mode"],
             ]
             cmd_list = [str(i) for i in cmd_list]
             logging.info(f"Final command for nnU-Net prediction: {cmd_list}")
@@ -342,6 +350,7 @@ def main():
             "trainer_class": args["trainer_class_name"],
             "plans_name": args["plans_name"],
             "checkpoint": args["checkpoint_name"],
+            "prediction_mode": args["mode"],
         }
         dfs = []
 
