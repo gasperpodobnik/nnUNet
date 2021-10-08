@@ -45,7 +45,7 @@ setup(
             "nnUNet_change_trainer_class = nnunet.inference.change_trainer:main",
             "nnUNet_evaluate_folder = nnunet.evaluation.evaluator:nnunet_evaluate_folder",
             "nnUNet_plot_task_pngs = nnunet.utilities.overlay_plots:entry_point_generate_overlay",
-            "nnUNet_calculate_metrics = results.predict:main",
+            "nnUNet_calculate_metrics = nnunet.results.predict:main",
         ],
     },
     keywords=[
