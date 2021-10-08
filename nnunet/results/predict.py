@@ -314,10 +314,9 @@ def main():
                 args["num_threads_nifti_save"],
                 "--mode",
                 args["mode"],
-                "--disable_tta",
-                args["disable_tta"],
+                "--disable_tta" if args["disable_tta"] else None,
             ]
-            cmd_list = [str(i) for i in cmd_list]
+            cmd_list = [str(i) for i in cmd_list if i]
             logging.info(f"Final command for nnU-Net prediction: {cmd_list}")
 
             # set env variables
