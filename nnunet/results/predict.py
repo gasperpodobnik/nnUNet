@@ -100,6 +100,12 @@ def main():
     parser.add_argument(
         "--mode", type=str, default="normal", help="nnUNet_predict parameter",
     )
+    parser.add_argument(
+        "--disable_tta", 
+        default=False,
+        action="store_true",
+        help="nnUNet_predict parameter",
+    )
 
     # running in terminal
     args = vars(parser.parse_args())
@@ -308,6 +314,8 @@ def main():
                 args["num_threads_nifti_save"],
                 "--mode",
                 args["mode"],
+                "--disable_tta",
+                args["disable_tta"],
             ]
             cmd_list = [str(i) for i in cmd_list]
             logging.info(f"Final command for nnU-Net prediction: {cmd_list}")
