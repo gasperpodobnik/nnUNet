@@ -1,18 +1,11 @@
 {
-	"folders": [
-		{
-			"path": ".."
-		},
-		{
-			"path": "../../../surface-distance"
-		}
-	],
-	"settings": {},
-	"extensions": {
-		"recommendations": [
-			"ms-python.python",
-			"ms-python.vscode-pylance",
-			"geddski.macros"
-		]
+  "folders": [
+	{
+		"path": ".."
+	},
+	{
+		"path": "../../../surface-distance"
 	}
+],
+  "settings": {}
 }
