@@ -24,6 +24,7 @@ setup(
         "requests",
         "nibabel",
         "tifffile",
+        "surface_distance",
     ],
     entry_points={
         "console_scripts": [
