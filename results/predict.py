@@ -17,12 +17,10 @@ import subprocess
 
 import pandas as pd
 
-# test comment
-
 # sys.path.append(r"/media/medical/gasperp/projects")
 # import utilities
 # sys.path.append(r"/media/medical/gasperp/projects/surface-distance")
-from surface_distance.compute_metrics import compute_metrices_deepmind
+from surface_distance import compute_metrics_deepmind
 
 
 def main():
@@ -287,12 +285,8 @@ def main():
         os.makedirs(out_dirs["test"], exist_ok=True)
 
     try:
-        # cmd_prefix = ""
-
-        # cmd_prefix = f"CUDA_VISIBLE_DEVICES={','.join(args['gpus'])}"
         for in_dir in images_source_dirs:
             cmd_list = [
-                # cmd_prefix,
                 "nnUNet_predict",
                 "-i",
                 in_dir,
@@ -388,13 +382,15 @@ def main():
         else:
             final_df.to_csv(csv_path)
         logging.info(f"Successfully saved {csv_name}.csv file to {csv_path}")
+        
+    except Exception as e:
+        logging.error(f"Failed due to the following error: {e}")
+
+    finally:
         shutil.rmtree(output_seg_dir)
         logging.info(
             f"Successfully deleted temporary pred seg masks dir ({output_seg_dir})"
         )
-    except Exception as e:
-        logging.error(f"Failed due to the following error: {e}")
-        shutil.rmtree(output_seg_dir)
         sys.exit()
 
 
