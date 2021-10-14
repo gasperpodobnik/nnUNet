@@ -343,7 +343,7 @@ def main():
             organ: int(lbl) for lbl, organ in dataset_json_dict["labels"].items()
         }
         logging.info(f"Found the following organs and labels: {organs_labels_dict}")
-        compute_metrics = compute_metrices_deepmind(
+        compute_metrics = compute_metrics_deepmind(
             organs_labels_dict=organs_labels_dict
         )
         settings_info = {
