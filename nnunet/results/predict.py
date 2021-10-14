@@ -17,10 +17,11 @@ import subprocess
 
 import pandas as pd
 
-# sys.path.append(r"/media/medical/gasperp/projects")
-# import utilities
-# sys.path.append(r"/media/medical/gasperp/projects/surface-distance")
-from surface_distance import compute_metrics_deepmind
+try:
+    from surface_distance import compute_metrics_deepmind
+except ImportError:
+    raise ImportError('the following repo is required for this script to run properly (it contains seg. metrics computation)\ngit clone https://github.com/gasperpodobnik/nnUNet.git\npip3 install -e .')
+
 
 
 def main():
