@@ -107,6 +107,11 @@ def main():
         action="store_true",
         help="nnUNet_predict parameter",
     )
+    parser.add_argument(
+        "--csv_name", 
+        default="results",
+        help="name of the output .csv file",
+    )
 
     # running in terminal
     args = vars(parser.parse_args())
@@ -119,7 +124,6 @@ def main():
         nnUNet_trained_models_dir, "nnUNet", args["configuration"]
     )
     base_nnunet_dir_on_medical = "/media/medical/projects/head_and_neck/nnUnet"
-    csv_name = "results"
 
     ## checkers for input parameters
     # input task
@@ -379,7 +383,7 @@ def main():
                 if args["save_seg_masks"]:
                     shutil.copy2(pred_fpath, join(out_dirs[phase], fname + ".nii.gz"))
 
-        csv_path = join(args["out_dir"], f"{csv_name}.csv")
+        csv_path = join(args["out_dir"], f"{args['csv_name']}.csv")
         final_df = pd.concat(dfs, ignore_index=True)
         if os.path.exists(csv_path):
             logging.info(
@@ -389,7 +393,7 @@ def main():
             pd.concat([existing_df, dfs], ignore_index=True).to_csv(csv_path)
         else:
             final_df.to_csv(csv_path)
-        logging.info(f"Successfully saved {csv_name}.csv file to {csv_path}")
+        logging.info(f"Successfully saved {args['csv_name']}.csv file to {csv_path}")
         
     except Exception as e:
         logging.error(f"Failed due to the following error: {e}")
