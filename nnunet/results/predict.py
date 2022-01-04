@@ -21,7 +21,8 @@ try:
     from surface_distance import compute_metrics_deepmind
 except ImportError:
     raise ImportError('the following repo is required for this script to run properly (it contains seg. metrics computation)\ngit clone https://github.com/gasperpodobnik/nnUNet.git\npip3 install -e .')
-
+    
+# /media/medical/gasperp/projects/nnUnet_clone/nnUNet/nnunet/results/predict.py -t 201 -f all --gpus 1
 
 
 def main():

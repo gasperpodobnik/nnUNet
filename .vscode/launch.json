@@ -36,18 +36,19 @@
             // ]
             [
                 "-t",
-                "150",
+                "201",
                 "-f",
                 "all",
                 "--gpus",
                 // "0",
                 "1",
-                "--mode",
-                "fastest",
-                "--num_threads_preprocessing",
-                "1",
-                "--num_threads_nifti_save",
-                "1"
+                "--save_seg_masks"
+                // "--mode",
+                // "fastest",
+                // "--num_threads_preprocessing",
+                // "1",
+                // "--num_threads_nifti_save",
+                // "1"
             ]
         }
     ]
