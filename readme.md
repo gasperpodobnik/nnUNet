@@ -98,6 +98,7 @@ Python 2 is deprecated and not supported. Please make sure you are using Python 
 
 1. Install [PyTorch](https://pytorch.org/get-started/locally/). You need at least version 1.6
 2. Install nnU-Net depending on your use case:
+
    1. For use as **standardized baseline**, **out-of-the-box segmentation algorithm** or for running **inference with pretrained models**:
 
       `pip install nnunet`
@@ -108,6 +109,7 @@ Python 2 is deprecated and not supported. Please make sure you are using Python 
       cd nnUNet
       pip install -e .
       ```
+
 3. nnU-Net needs to know where you intend to save raw data, preprocessed data and trained models. For this you need to
    set a few of environment variables. Please follow the instructions [here](documentation/setting_up_paths.md).
 4. (OPTIONAL) Install [hiddenlayer](https://github.com/waleedka/hiddenlayer). hiddenlayer enables nnU-net to generate
@@ -260,7 +262,7 @@ nnUNet_train 3d_cascade_fullres nnUNetTrainerV2CascadeFullRes TaskXXX_MYTASK FOL
 Note that the 3D full resolution U-Net of the cascade requires the five folds of the low resolution U-Net to be
 completed beforehand!
 
-The trained models will we written to the RESULTS_FOLDER/nnUNet folder. Each training obtains an automatically generated
+The trained models will be written to the RESULTS_FOLDER/nnUNet folder. Each training obtains an automatically generated
 output folder name:
 
 nnUNet_preprocessed/CONFIGURATION/TaskXXX_MYTASKNAME/TRAINER_CLASS_NAME\_\_PLANS_FILE_NAME/FOLD

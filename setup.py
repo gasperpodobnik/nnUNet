@@ -4,8 +4,8 @@ setup(
     name="nnunet",
     packages=find_namespace_packages(include=["nnunet", "nnunet.*"]),
     version="1.7.0",
-    description="forked nnU-Net. Framework for out-of-the box biomedical image segmentation.",
-    url="https://github.com/gasperpodobnik/nnUNet.git",
+    description="nnU-Net. Framework for out-of-the box biomedical image segmentation.",
+    url="https://github.com/MIC-DKFZ/nnUNet",
     author="Division of Medical Image Computing, German Cancer Research Center",
     author_email="f.isensee@dkfz-heidelberg.de",
     license="Apache License Version 2.0, January 2004",
@@ -24,6 +24,7 @@ setup(
         "requests",
         "nibabel",
         "tifffile",
+        "matplotlib",
     ],
     entry_points={
         "console_scripts": [

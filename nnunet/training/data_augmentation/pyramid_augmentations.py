@@ -36,7 +36,7 @@ class RemoveRandomConnectedComponentFromOneHotEncodingTransform(AbstractTransfor
         p_per_label=1,
     ):
         """
-        :param dont_do_if_covers_more_than_X_percent: dont_do_if_covers_more_than_X_percent=0.25 is 25\%!
+        :param dont_do_if_covers_more_than_X_percent: dont_do_if_covers_more_than_X_percent=0.25 is 25%!
         :param channel_idx: can be list or int
         :param key:
         """
