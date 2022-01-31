@@ -270,7 +270,7 @@ def main():
         join(raw_data_dir, "imagesTs"),
     ]
 
-    config_str = f"FOLD-{args['fold']}_TRAINER-{args['trainer_class_name']}_PLANS-{args['plans_name']}_CHK-{args['checkpoint_name']}"
+    config_str = f"TASK-{args['task_number']}_FOLD-{args['fold']}_TRAINER-{args['trainer_class_name']}_PLANS-{args['plans_name']}_CHK-{args['checkpoint_name']}"
     logging.info(f"settings info: {config_str}")
     if args["out_dir"] is None:
         args["out_dir"] = join(base_nnunet_dir_on_medical, task_name, "results")
