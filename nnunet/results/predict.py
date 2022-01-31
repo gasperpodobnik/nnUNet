@@ -113,12 +113,18 @@ def main():
         default="results",
         help="name of the output .csv file",
     )
+    parser.add_argument(
+        "--testing_task_number",
+        type=int,
+        default=None,
+        help="three digit number XXX of the dataset that should be used just for testing the model that was trained on dataset specified with --task_number",
+    )
 
     # running in terminal
     args = vars(parser.parse_args())
 
     # paths definition
-    nnUNet_raw_data_base_dir = os.environ["nnUNet_raw_data_base"]
+    nnUNet_raw_data_base_dir = join(os.environ["nnUNet_raw_data_base"], 'nnUNet_raw_data')
     nnUNet_preprocessed_dir = os.environ["nnUNet_preprocessed"]
     nnUNet_trained_models_dir = os.environ["RESULTS_FOLDER"]
     nnUNet_configuration_dir = join(
@@ -136,11 +142,25 @@ def main():
     assert (
         args["task_number"] in existing_tasks.keys()
     ), f"Could not find task num.: {args['task_number']}. Found the following task/directories: {existing_tasks}"
-
     task_dir = existing_tasks[args["task_number"]]
+
     # e.g.: '/storage/nnUnet/nnUNet_trained_models/nnUNet/3d_fullres/Task152_onkoi-2019-batch-1-and-2-both-modalities-biggest-20-organs-new'
     task_name = Path(task_dir).name
     # e.g.: task_name = 'Task152_onkoi-2019-batch-1-and-2-both-modalities-biggest-20-organs-new'
+    
+    existing_datasets = {
+        int(i.split("_")[0][-3:]): join(nnUNet_raw_data_base_dir, i)
+        for i in os.listdir(nnUNet_raw_data_base_dir)
+        if i.startswith("Task")
+    }
+
+    if args['testing_task_number']:
+        assert args["testing_task_number"] in existing_datasets.keys(), f"Could not find testing task num.: {args['testing_task_number']}. Found the following task/directories: {existing_datasets}"
+        testing_task_dir = existing_datasets[args["testing_task_number"]]
+        testing_dataset_task_name = Path(testing_task_dir).name
+    else:
+        testing_dataset_task_name = task_name
+
 
     ## checkers for input parameters
     # nnunet trainer class
@@ -216,7 +236,7 @@ def main():
     ## data paths retrieval
     # get dict, dict of dict of filepaths: {'train': {img_name: {'images': {modality0: fpath, ...}, 'label': fpath} ...}, ...}
     # load dataset json
-    with open(join(nnUNet_preprocessed_dir, task_name, "dataset.json"), "r") as fp:
+    with open(join(nnUNet_raw_data_base_dir, testing_dataset_task_name, "dataset.json"), "r") as fp:
         dataset_json_dict = json.load(fp)
     # create modalities dict
     four_digit_ids = {
@@ -244,36 +264,41 @@ def main():
 
     # create dict with paths split on train, val (if fold not 'all') and test
     splits_final_dict = {}
-    raw_data_dir = join(nnUNet_raw_data_base_dir, "nnUNet_raw_data", task_name)
-    if args["fold"] != "all":
-        with open(
-            join(nnUNet_preprocessed_dir, task_name, "splits_final.pkl"), "rb"
-        ) as f:
-            _dict = pickle.load(f)
-        splits_final_dict["train"] = splits_iterator(_dict[int(args["fold"])]["train"])
-        splits_final_dict["val"] = splits_iterator(_dict[int(args["fold"])]["val"])
-    else:
+    raw_data_dir = join(nnUNet_raw_data_base_dir, testing_dataset_task_name)
+    if args["fold"] == "all" or args['testing_task_number'] is not None:
         splits_final_dict["train"] = splits_iterator(
             [
                 Path(_dict["image"]).name[: -len(".nii.gz")]
                 for _dict in dataset_json_dict["training"]
             ]
         )
+    else:
+        with open(
+            join(nnUNet_preprocessed_dir, task_name, "splits_final.pkl"), "rb"
+        ) as f:
+            _dict = pickle.load(f)
+        splits_final_dict["train"] = splits_iterator(_dict[int(args["fold"])]["train"])
+        splits_final_dict["val"] = splits_iterator(_dict[int(args["fold"])]["val"])
 
-    splits_final_dict["test"] = splits_iterator(
+    test_file_list = splits_iterator(
         [Path(i).name[: -len(".nii.gz")] for i in dataset_json_dict["test"]],
         dir_name="Ts",
     )
+    if len(test_file_list):
+        splits_final_dict["test"] = test_file_list
 
-    images_source_dirs = [
-        join(raw_data_dir, "imagesTr"),
-        join(raw_data_dir, "imagesTs"),
-    ]
+    images_source_dirs = []
+    for dir in [join(raw_data_dir, "imagesTr"), join(raw_data_dir, "imagesTs")]:
+        if len(os.listdir(dir)):
+            images_source_dirs.append(dir)
+            
 
     config_str = f"TASK-{args['task_number']}_FOLD-{args['fold']}_TRAINER-{args['trainer_class_name']}_PLANS-{args['plans_name']}_CHK-{args['checkpoint_name']}"
+    if args['testing_task_number']:
+        config_str += f"_TESTDS-{args['testing_task_number']}"
     logging.info(f"settings info: {config_str}")
     if args["out_dir"] is None:
-        args["out_dir"] = join(base_nnunet_dir_on_medical, task_name, "results")
+        args["out_dir"] = join(base_nnunet_dir_on_medical, task_name, "results"+ f"_TESTDS-{args['testing_task_number']}")
     os.makedirs(args["out_dir"], exist_ok=True)
 
     # prepare temporary dir for predicted segmentations
@@ -291,10 +316,12 @@ def main():
             "val": join(pred_seg_out_dir, "val"),
             "test": join(pred_seg_out_dir, "test"),
         }
-        os.makedirs(out_dirs["train"], exist_ok=True)
+        if "train" in splits_final_dict.keys():
+            os.makedirs(out_dirs["train"], exist_ok=True)
         if "val" in splits_final_dict.keys():
             os.makedirs(out_dirs["val"], exist_ok=True)
-        os.makedirs(out_dirs["test"], exist_ok=True)
+        if "test" in splits_final_dict.keys():
+            os.makedirs(out_dirs["test"], exist_ok=True)
 
     try:
         for in_dir in images_source_dirs:
@@ -372,7 +399,14 @@ def main():
 
                 gt_fpath = fname_dict["label"]
                 pred_fpath = join(output_seg_dir, fname + ".nii.gz")
+                
+                if args["save_seg_masks"]:
+                    shutil.copy2(pred_fpath, join(out_dirs[phase], fname + ".nii.gz"))
 
+                if not os.path.isfile(gt_fpath):
+                    logging.error(f'Skipping file {gt_fpath}, because GT mask is missing')
+                    continue
+                
                 out_dict_tmp = compute_metrics.execute(
                     fpath_gt=gt_fpath, fpath_pred=pred_fpath
                 )
@@ -381,8 +415,6 @@ def main():
                     df[k] = val
                 dfs.append(df)
 
-                if args["save_seg_masks"]:
-                    shutil.copy2(pred_fpath, join(out_dirs[phase], fname + ".nii.gz"))
 
         csv_path = join(args["out_dir"], f"{args['csv_name']}.csv")
         final_df = pd.concat(dfs, ignore_index=True)
