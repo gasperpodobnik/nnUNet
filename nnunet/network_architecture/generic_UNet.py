@@ -262,13 +262,20 @@ class Generic_UNet(SegmentationNetwork):
             self.max_num_features = max_num_features
 
         self.conv_blocks_context = []
+        self.conv_blocks_context_path1 = []
+        self.conv_blocks_context_path2 = []
         self.conv_blocks_localization = []
         self.td = []
         self.tu = []
         self.seg_outputs = []
 
+        # real number of input channels
+        self.input_channels = input_channels
+        # assert input_channels == 2, ValueError('number of channels is not 2')
         output_features = base_num_features
-        input_features = input_channels
+        # input_features = input_channels
+        input_features = 2
+        self.merge_after_n_blocks = 2
 
         for d in range(num_pool):
             # determine the first stride
@@ -280,11 +287,29 @@ class Generic_UNet(SegmentationNetwork):
             self.conv_kwargs['kernel_size'] = self.conv_kernel_sizes[d]
             self.conv_kwargs['padding'] = self.conv_pad_sizes[d]
             # add convolutions
-            self.conv_blocks_context.append(StackedConvLayers(input_features, output_features, num_conv_per_stage,
-                                                              self.conv_op, self.conv_kwargs, self.norm_op,
-                                                              self.norm_op_kwargs, self.dropout_op,
-                                                              self.dropout_op_kwargs, self.nonlin, self.nonlin_kwargs,
-                                                              first_stride, basic_block=basic_block))
+
+            if d < self.merge_after_n_blocks:
+                # separate paths at encoding part
+                factor = 2
+                path_input_features = int(input_features/factor)
+                path_output_features = int(output_features/factor)
+                self.conv_blocks_context_path1.append(StackedConvLayers(path_input_features, path_output_features, num_conv_per_stage,
+                                                                self.conv_op, self.conv_kwargs, self.norm_op,
+                                                                self.norm_op_kwargs, self.dropout_op,
+                                                                self.dropout_op_kwargs, self.nonlin, self.nonlin_kwargs,
+                                                                first_stride, basic_block=basic_block))
+                self.conv_blocks_context_path2.append(StackedConvLayers(path_input_features, path_output_features, num_conv_per_stage,
+                                                                self.conv_op, self.conv_kwargs, self.norm_op,
+                                                                self.norm_op_kwargs, self.dropout_op,
+                                                                self.dropout_op_kwargs, self.nonlin, self.nonlin_kwargs,
+                                                                first_stride, basic_block=basic_block))
+            else:
+                # common path in encoder
+                self.conv_blocks_context.append(StackedConvLayers(input_features, output_features, num_conv_per_stage,
+                                                                self.conv_op, self.conv_kwargs, self.norm_op,
+                                                                self.norm_op_kwargs, self.dropout_op,
+                                                                self.dropout_op_kwargs, self.nonlin, self.nonlin_kwargs,
+                                                                first_stride, basic_block=basic_block))
             if not self.convolutional_pooling:
                 self.td.append(pool_op(pool_op_kernel_sizes[d]))
             input_features = output_features
@@ -325,15 +350,26 @@ class Generic_UNet(SegmentationNetwork):
         # now lets build the localization pathway
         for u in range(num_pool):
             nfeatures_from_down = final_num_features
-            nfeatures_from_skip = self.conv_blocks_context[
-                -(2 + u)].output_channels  # self.conv_blocks_context[-1] is bottleneck, so start with -2
+            idx = -(2 + u)
+            if num_pool - u -1 < self.merge_after_n_blocks:
+                idx += 2 + self.merge_after_n_blocks
+                nfeatures_from_skip = self.conv_blocks_context_path1[
+                idx].output_channels*2
+            else:
+                nfeatures_from_skip = self.conv_blocks_context[
+                idx].output_channels  # self.conv_blocks_context[-1] is bottleneck, so start with -2
             n_features_after_tu_and_concat = nfeatures_from_skip * 2
 
             # the first conv reduces the number of features to match those of skip
             # the following convs work on that number of features
             # if not convolutional upsampling then the final conv reduces the num of features again
             if u != num_pool - 1 and not self.convolutional_upsampling:
-                final_num_features = self.conv_blocks_context[-(3 + u)].output_channels
+                idx = -(3 + u)
+                if num_pool - u -1 < self.merge_after_n_blocks:
+                    idx += 3 + self.merge_after_n_blocks
+                    final_num_features = self.conv_blocks_context_path1[idx].output_channels
+                else:
+                    final_num_features = self.conv_blocks_context[idx].output_channels
             else:
                 final_num_features = nfeatures_from_skip
 
@@ -373,6 +409,8 @@ class Generic_UNet(SegmentationNetwork):
         # register all modules properly
         self.conv_blocks_localization = nn.ModuleList(self.conv_blocks_localization)
         self.conv_blocks_context = nn.ModuleList(self.conv_blocks_context)
+        self.conv_blocks_context_path1 = nn.ModuleList(self.conv_blocks_context_path1)
+        self.conv_blocks_context_path2 = nn.ModuleList(self.conv_blocks_context_path2)
         self.td = nn.ModuleList(self.td)
         self.tu = nn.ModuleList(self.tu)
         self.seg_outputs = nn.ModuleList(self.seg_outputs)
@@ -387,11 +425,31 @@ class Generic_UNet(SegmentationNetwork):
     def forward(self, x):
         skips = []
         seg_outputs = []
-        for d in range(len(self.conv_blocks_context) - 1):
-            x = self.conv_blocks_context[d](x)
-            skips.append(x)
+        for d in range(len(self.conv_blocks_context_path1) + len(self.conv_blocks_context) - 1):
+            if d == 0:
+                x1 = x[:,:1]
+                if self.input_channels == 1:
+                    x2 = x[:,:1]
+                else:
+                    assert self.input_channels == 2
+                    x2 = x[:,1:]
+            if d < self.merge_after_n_blocks:
+                # channels_num = int(list(x.size())[1])
+                # channels_num_half = int(channels_num/2)
+                # x[:,:channels_num_half]
+                x1 = self.conv_blocks_context_path1[d](x1)
+                x2 = self.conv_blocks_context_path1[d](x2)
+                skips.append(torch.cat((x1, x2), dim=1))
+            else:
+                if d == self.merge_after_n_blocks:
+                    x = torch.cat((x1, x2), dim=1)
+                x = self.conv_blocks_context[d-self.merge_after_n_blocks](x)
+                skips.append(x)
             if not self.convolutional_pooling:
-                x = self.td[d](x)
+                if d < self.merge_after_n_blocks:
+                    x = self.td[d-self.merge_after_n_blocks](torch.cat((x1, x2), dim=1))
+                else:
+                    x = self.td[d-self.merge_after_n_blocks](x)
 
         x = self.conv_blocks_context[-1](x)
 

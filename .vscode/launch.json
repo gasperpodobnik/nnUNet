@@ -49,6 +49,27 @@
                 "--num_threads_nifti_save",
                 "1"
             ]
-        }
+        },
+        {
+            "name": "nnunet_cmd",
+            "type": "python",
+            "request": "launch",
+            "program": "/media/medical/gasperp/projects/nnUnet_clone/nnUNet/nnunet/run/run_training.py",
+            // "console": "integratedTerminal",
+            "console": "internalConsole", // we need to use this because of special characters in args (regex expression includes parenthesis)
+            "cwd": "${workspaceRoot}",
+            "python": "/opt/conda/bin/python3",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceRoot}/.env",
+                "PYDEVD_WARN_EVALUATION_TIMEOUT": "500"
+            },
+            "args": [
+                "3d_fullres",
+                "nnUNetTrainerV2",
+                "Task154_onkoi-2019-batch-1-and-2-both-modalities-all-cropped-cor-sag-ax",
+                "0"
+            ]
+        },
     ]
 }
