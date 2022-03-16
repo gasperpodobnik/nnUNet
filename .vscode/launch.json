@@ -71,5 +71,21 @@
                 "0"
             ]
         },
+        {
+            "name": "train_dual_path",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "python": "/opt/conda/bin/python3",
+            "justMyCode": false,
+            "args": [
+                "nnUNet_train",
+                "3d_fullres",
+                "nnUNetTrainerV2_noMirroringAxis2",
+                "Task162_onkoi-2019-dual-path-just-CT",
+                "0"
+            ]
+        },
     ]
 }
