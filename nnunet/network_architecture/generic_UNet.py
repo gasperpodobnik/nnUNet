@@ -289,6 +289,7 @@ class Generic_UNet(SegmentationNetwork):
             # add convolutions
 
             if d < self.merge_after_n_blocks:
+                print('\n\nUsing dual path config\n\n')
                 # separate paths at encoding part
                 factor = 2
                 path_input_features = int(input_features/factor)
