@@ -172,11 +172,11 @@ def get_available_models():
             "url": "https://zenodo.org/record/4003545/files/Task076_Fluo_N3DH_SIM.zip?download=1",
         },
         "Task082_BraTS2020": {
-            "description": "Brain tumor segmentation challenge 2020 (BraTS)\n"
-            "Segmentation targets are 0: background, 1: edema, 2: enhancing tumor, 3: necrosis\n"
-            "Input modalities are 0: T1, 1: T1ce, 2: T2, 3: FLAIR (MRI images)\n"
-            "Also see https://www.med.upenn.edu/cbica/brats2020/",
-            "url": (
+            'description': "Brain tumor segmentation challenge 2020 (BraTS)\n"
+                           "Segmentation targets are 0: background, 1: edema, 2: necrosis, 3: enhancing tumor\n"
+                           "Input modalities are 0: T1, 1: T1ce, 2: T2, 3: FLAIR (MRI images)\n"
+                           "Also see https://www.med.upenn.edu/cbica/brats2020/",
+            'url': (
                 "https://zenodo.org/record/4635763/files/Task082_nnUNetTrainerV2__nnUNetPlansv2.1_5fold.zip?download=1",
                 "https://zenodo.org/record/4635763/files/Task082_nnUNetTrainerV2BraTSRegions_DA3_BN_BD__nnUNetPlansv2.1_bs5_5fold.zip?download=1",
                 "https://zenodo.org/record/4635763/files/Task082_nnUNetTrainerV2BraTSRegions_DA4_BN__nnUNetPlansv2.1_bs5_15fold.zip?download=1",
