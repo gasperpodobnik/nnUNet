@@ -5,6 +5,9 @@
 	},
 	{
 		"path": "../../../surface-distance"
+	},
+	{
+		"path": "../../../storage/nnUnet"
 	}
 ],
   "settings": {}

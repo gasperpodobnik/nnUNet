@@ -17,12 +17,10 @@ import subprocess
 
 import pandas as pd
 
-try:
-    from surface_distance import compute_metrics_deepmind
-except ImportError:
-    raise ImportError('the following repo is required for this script to run properly (it contains seg. metrics computation)\ngit clone https://github.com/gasperpodobnik/nnUNet.git\npip3 install -e .')
-    
-# /media/medical/gasperp/projects/nnUnet_clone/nnUNet/nnunet/results/predict.py -t 201 -f all --gpus 1
+# sys.path.append(r"/media/medical/gasperp/projects")
+# import utilities
+# sys.path.append(r"/media/medical/gasperp/projects/surface-distance")
+from surface_distance import compute_metrics_deepmind
 
 
 def main():
@@ -109,28 +107,43 @@ def main():
         help="nnUNet_predict parameter",
     )
     parser.add_argument(
-        "--csv_name", 
-        default="results",
-        help="name of the output .csv file",
+        "--direct_method", 
+        default=False,
+        action="store_true",
+        help="method for getting predictions",
     )
     parser.add_argument(
-        "--testing_task_number",
-        type=int,
-        default=None,
-        help="three digit number XXX of the dataset that should be used just for testing the model that was trained on dataset specified with --task_number",
+        "--step_size", type=float, default=0.5, required=False, help="don't touch"
+    )
+    parser.add_argument(
+        "--all_in_gpu",
+        type=str,
+        default="None",
+        required=False,
+        help="can be None, False or True",
     )
 
     # running in terminal
     args = vars(parser.parse_args())
 
+    all_in_gpu = args["all_in_gpu"]
+    assert all_in_gpu in ["None", "False", "True"]
+    if all_in_gpu == "None":
+        all_in_gpu = None
+    elif all_in_gpu == "True":
+        all_in_gpu = True
+    elif all_in_gpu == "False":
+        all_in_gpu = False
+
     # paths definition
-    nnUNet_raw_data_base_dir = join(os.environ["nnUNet_raw_data_base"], 'nnUNet_raw_data')
+    nnUNet_raw_data_base_dir = os.environ["nnUNet_raw_data_base"]
     nnUNet_preprocessed_dir = os.environ["nnUNet_preprocessed"]
     nnUNet_trained_models_dir = os.environ["RESULTS_FOLDER"]
     nnUNet_configuration_dir = join(
         nnUNet_trained_models_dir, "nnUNet", args["configuration"]
     )
     base_nnunet_dir_on_medical = "/media/medical/projects/head_and_neck/nnUnet"
+    csv_name = "results"
 
     ## checkers for input parameters
     # input task
@@ -142,25 +155,11 @@ def main():
     assert (
         args["task_number"] in existing_tasks.keys()
     ), f"Could not find task num.: {args['task_number']}. Found the following task/directories: {existing_tasks}"
-    task_dir = existing_tasks[args["task_number"]]
 
+    task_dir = existing_tasks[args["task_number"]]
     # e.g.: '/storage/nnUnet/nnUNet_trained_models/nnUNet/3d_fullres/Task152_onkoi-2019-batch-1-and-2-both-modalities-biggest-20-organs-new'
     task_name = Path(task_dir).name
     # e.g.: task_name = 'Task152_onkoi-2019-batch-1-and-2-both-modalities-biggest-20-organs-new'
-    
-    existing_datasets = {
-        int(i.split("_")[0][-3:]): join(nnUNet_raw_data_base_dir, i)
-        for i in os.listdir(nnUNet_raw_data_base_dir)
-        if i.startswith("Task")
-    }
-
-    if args['testing_task_number']:
-        assert args["testing_task_number"] in existing_datasets.keys(), f"Could not find testing task num.: {args['testing_task_number']}. Found the following task/directories: {existing_datasets}"
-        testing_task_dir = existing_datasets[args["testing_task_number"]]
-        testing_dataset_task_name = Path(testing_task_dir).name
-    else:
-        testing_dataset_task_name = task_name
-
 
     ## checkers for input parameters
     # nnunet trainer class
@@ -236,7 +235,7 @@ def main():
     ## data paths retrieval
     # get dict, dict of dict of filepaths: {'train': {img_name: {'images': {modality0: fpath, ...}, 'label': fpath} ...}, ...}
     # load dataset json
-    with open(join(nnUNet_raw_data_base_dir, testing_dataset_task_name, "dataset.json"), "r") as fp:
+    with open(join(nnUNet_preprocessed_dir, task_name, "dataset.json"), "r") as fp:
         dataset_json_dict = json.load(fp)
     # create modalities dict
     four_digit_ids = {
@@ -264,41 +263,36 @@ def main():
 
     # create dict with paths split on train, val (if fold not 'all') and test
     splits_final_dict = {}
-    raw_data_dir = join(nnUNet_raw_data_base_dir, testing_dataset_task_name)
-    if args["fold"] == "all" or args['testing_task_number'] is not None:
-        splits_final_dict["train"] = splits_iterator(
-            [
-                Path(_dict["image"]).name[: -len(".nii.gz")]
-                for _dict in dataset_json_dict["training"]
-            ]
-        )
-    else:
+    raw_data_dir = join(nnUNet_raw_data_base_dir, "nnUNet_raw_data", task_name)
+    if args["fold"] != "all":
         with open(
             join(nnUNet_preprocessed_dir, task_name, "splits_final.pkl"), "rb"
         ) as f:
             _dict = pickle.load(f)
         splits_final_dict["train"] = splits_iterator(_dict[int(args["fold"])]["train"])
         splits_final_dict["val"] = splits_iterator(_dict[int(args["fold"])]["val"])
+    else:
+        splits_final_dict["train"] = splits_iterator(
+            [
+                Path(_dict["image"]).name[: -len(".nii.gz")]
+                for _dict in dataset_json_dict["training"]
+            ]
+        )
 
-    test_file_list = splits_iterator(
+    splits_final_dict["test"] = splits_iterator(
         [Path(i).name[: -len(".nii.gz")] for i in dataset_json_dict["test"]],
         dir_name="Ts",
     )
-    if len(test_file_list):
-        splits_final_dict["test"] = test_file_list
 
-    images_source_dirs = []
-    for dir in [join(raw_data_dir, "imagesTr"), join(raw_data_dir, "imagesTs")]:
-        if len(os.listdir(dir)):
-            images_source_dirs.append(dir)
-            
+    images_source_dirs = [
+        join(raw_data_dir, "imagesTr"),
+        join(raw_data_dir, "imagesTs"),
+    ]
 
-    config_str = f"TASK-{args['task_number']}_FOLD-{args['fold']}_TRAINER-{args['trainer_class_name']}_PLANS-{args['plans_name']}_CHK-{args['checkpoint_name']}"
-    if args['testing_task_number']:
-        config_str += f"_TESTDS-{args['testing_task_number']}"
+    config_str = f"FOLD-{args['fold']}_TRAINER-{args['trainer_class_name']}_PLANS-{args['plans_name']}_CHK-{args['checkpoint_name']}"
     logging.info(f"settings info: {config_str}")
     if args["out_dir"] is None:
-        args["out_dir"] = join(base_nnunet_dir_on_medical, task_name, "results"+ f"_TESTDS-{args['testing_task_number']}")
+        args["out_dir"] = join(base_nnunet_dir_on_medical, task_name, "results")
     os.makedirs(args["out_dir"], exist_ok=True)
 
     # prepare temporary dir for predicted segmentations
@@ -316,55 +310,90 @@ def main():
             "val": join(pred_seg_out_dir, "val"),
             "test": join(pred_seg_out_dir, "test"),
         }
-        if "train" in splits_final_dict.keys():
-            os.makedirs(out_dirs["train"], exist_ok=True)
+        os.makedirs(out_dirs["train"], exist_ok=True)
         if "val" in splits_final_dict.keys():
             os.makedirs(out_dirs["val"], exist_ok=True)
-        if "test" in splits_final_dict.keys():
-            os.makedirs(out_dirs["test"], exist_ok=True)
+        os.makedirs(out_dirs["test"], exist_ok=True)
+
+
+    
 
     try:
-        for in_dir in images_source_dirs:
-            cmd_list = [
-                "nnUNet_predict",
-                "-i",
-                in_dir,
-                "-o",
-                output_seg_dir,
-                "-t",
-                args["task_number"],
-                "-m",
-                args["configuration"],
-                "-f",
-                args["fold"],
-                "-tr",
-                args["trainer_class_name"],
-                "-chk",
-                args["checkpoint_name"],
-                "--num_threads_preprocessing",
-                args["num_threads_preprocessing"],
-                "--num_threads_nifti_save",
-                args["num_threads_nifti_save"],
-                "--mode",
-                args["mode"],
-                "--disable_tta" if args["disable_tta"] else None,
-            ]
-            cmd_list = [str(i) for i in cmd_list if i]
-            logging.info(f"Final command for nnU-Net prediction: {cmd_list}")
+        if args['direct_method']:
+            from nnunet.inference.predict import predict_from_folder
 
-            # set env variables
-            if args["gpus"]:
-                os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(args["gpus"])
-                logging.info(
-                    f"Set env variables CUDA_VISIBLE_DEVICES to: {os.environ['CUDA_VISIBLE_DEVICES']}"
+            model_folder_name = join(
+                nnUNet_configuration_dir,
+                trainer_classes_and_plans_dir
+            )
+            print("using model stored in ", model_folder_name)
+            assert isdir(model_folder_name), (
+                "model output folder not found. Expected: %s" % model_folder_name
+            )
+
+            for in_dir in images_source_dirs:
+                predict_from_folder(
+                    model_folder_name,
+                    in_dir,
+                    output_seg_dir,
+                    [int(args["fold"])],
+                    False,
+                    num_threads_preprocessing=args["num_threads_preprocessing"],
+                    num_threads_nifti_save=args["num_threads_nifti_save"],
+                    lowres_segmentations=None,
+                    part_id=0,
+                    num_parts=1,
+                    tta=not args["disable_tta"],
+                    overwrite_existing=False,
+                    mode=args["mode"],
+                    overwrite_all_in_gpu=all_in_gpu,
+                    mixed_precision=not False,
+                    step_size=args["step_size"],
+                    checkpoint_name=args["checkpoint_name"],
                 )
-            os.environ["MKL_THREADING_LAYER"] = "GNU"
 
-            # RUN command in terminal
-            subprocess_out = subprocess.run(cmd_list, check=True)
+        else:
+            for in_dir in images_source_dirs:
+                cmd_list = [
+                    "nnUNet_predict",
+                    "-i",
+                    in_dir,
+                    "-o",
+                    output_seg_dir,
+                    "-t",
+                    args["task_number"],
+                    "-m",
+                    args["configuration"],
+                    "-f",
+                    args["fold"],
+                    "-tr",
+                    args["trainer_class_name"],
+                    "-chk",
+                    args["checkpoint_name"],
+                    "--num_threads_preprocessing",
+                    args["num_threads_preprocessing"],
+                    "--num_threads_nifti_save",
+                    args["num_threads_nifti_save"],
+                    "--mode",
+                    args["mode"],
+                    "--disable_tta" if args["disable_tta"] else None,
+                ]
+                cmd_list = [str(i) for i in cmd_list if i]
+                logging.info(f"Final command for nnU-Net prediction: {cmd_list}")
 
-            logging.info(f"Subprocess exit code was: {subprocess_out.returncode}")
-            logging.info(f"Successfully predicted seg masks from input dir: {in_dir}")
+                # set env variables
+                if args["gpus"]:
+                    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(args["gpus"])
+                    logging.info(
+                        f"Set env variables CUDA_VISIBLE_DEVICES to: {os.environ['CUDA_VISIBLE_DEVICES']}"
+                    )
+                os.environ["MKL_THREADING_LAYER"] = "GNU"
+
+                # RUN command in terminal
+                subprocess_out = subprocess.run(cmd_list, check=True)
+
+                logging.info(f"Subprocess exit code was: {subprocess_out.returncode}")
+                logging.info(f"Successfully predicted seg masks from input dir: {in_dir}")
 
     except Exception as e:
         logging.error(f"Failed due to the following error: {e}")
@@ -399,14 +428,7 @@ def main():
 
                 gt_fpath = fname_dict["label"]
                 pred_fpath = join(output_seg_dir, fname + ".nii.gz")
-                
-                if args["save_seg_masks"]:
-                    shutil.copy2(pred_fpath, join(out_dirs[phase], fname + ".nii.gz"))
 
-                if not os.path.isfile(gt_fpath):
-                    logging.error(f'Skipping file {gt_fpath}, because GT mask is missing')
-                    continue
-                
                 out_dict_tmp = compute_metrics.execute(
                     fpath_gt=gt_fpath, fpath_pred=pred_fpath
                 )
@@ -415,8 +437,10 @@ def main():
                     df[k] = val
                 dfs.append(df)
 
+                if args["save_seg_masks"]:
+                    shutil.copy2(pred_fpath, join(out_dirs[phase], fname + ".nii.gz"))
 
-        csv_path = join(args["out_dir"], f"{args['csv_name']}.csv")
+        csv_path = join(args["out_dir"], f"{csv_name}.csv")
         final_df = pd.concat(dfs, ignore_index=True)
         if os.path.exists(csv_path):
             logging.info(
@@ -426,7 +450,7 @@ def main():
             pd.concat([existing_df, dfs], ignore_index=True).to_csv(csv_path)
         else:
             final_df.to_csv(csv_path)
-        logging.info(f"Successfully saved {args['csv_name']}.csv file to {csv_path}")
+        logging.info(f"Successfully saved {csv_name}.csv file to {csv_path}")
         
     except Exception as e:
         logging.error(f"Failed due to the following error: {e}")
