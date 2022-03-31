@@ -446,8 +446,9 @@ def main():
             logging.info(
                 f"Found existing .csv file on location {csv_path}, merging existing and new dataframe"
             )
-            existing_df = pd.read_csv(csv_path)
-            pd.concat([existing_df, dfs], ignore_index=True).to_csv(csv_path)
+            existing_df = [pd.read_csv(csv_path)]
+            existing_df.extend(dfs)
+            pd.concat(existing_df, ignore_index=True).to_csv(csv_path)
         else:
             final_df.to_csv(csv_path)
         logging.info(f"Successfully saved {csv_name}.csv file to {csv_path}")

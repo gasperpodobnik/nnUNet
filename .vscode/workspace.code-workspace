@@ -1,14 +1,17 @@
 {
-  "folders": [
-	{
-		"path": ".."
-	},
-	{
-		"path": "../../../surface-distance"
-	},
-	{
-		"path": "../../../storage/nnUnet"
-	}
-],
-  "settings": {}
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"path": "../../../surface-distance"
+		},
+		{
+			"path": "../../../storage/nnUnet"
+		},
+		{
+			"path": "../../nnunet"
+		}
+	],
+	"settings": {}
 }

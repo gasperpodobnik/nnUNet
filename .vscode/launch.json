@@ -42,5 +42,39 @@
                 "--verify_dataset_integrity",
             ]
         },
+        {
+            "name": "predict_dual_path",
+            "type": "python",
+            "request": "launch",
+            // "program": "${file}",
+            "program": "/tmp/nnUNet/nnunet/results/predict.py",
+            "console": "integratedTerminal",
+            "python": "/opt/conda/bin/python3",
+            "justMyCode": false,
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "1"
+            },
+            "args": [
+                // "nnUNet_calculate_metrics",
+                "-t",
+                "162",
+                "-conf",
+                "3d_fullres",
+                "-f",
+                "0",
+                "-tr",
+                "nnUNetTrainerV2_noMirroringAxis2",
+                "--save_seg_masks",
+                // "--mode",
+                // "fastest",
+                "--direct_method",
+                "--step_size",
+                "0.75",
+                "--all_in_gpu",
+                "True",
+                "--checkpoint_name",
+                "model_latest"
+            ]
+        }
     ]
 }
