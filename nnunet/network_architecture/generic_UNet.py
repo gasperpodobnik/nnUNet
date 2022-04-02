@@ -291,21 +291,29 @@ class Generic_UNet(SegmentationNetwork):
             if d < self.merge_after_n_blocks:
                 print('\n\nUsing dual path config' + f'num channels: {input_channels}' + '\n\n')
                 # separate paths at encoding part
-                factor = 2
-                path_input_features = int(input_features/factor)
-                path_output_features = int(output_features/factor)
-                self.conv_blocks_context_path1.append(StackedConvLayers(path_input_features, path_output_features, num_conv_per_stage,
+                # factor = 2
+                # path1_input_features = path2_input_features = int(input_features/factor)
+                # path1_output_features = path2_output_features = int(output_features/factor)
+                
+                path1_input_features = input_features - 1
+                path2_input_features = 1
+                path1_output_features = output_features - 1
+                path2_output_features = 1
+                print(f'Path1 in: {path1_input_features}, out: {path1_output_features}')
+                print(f'Path2 in: {path2_input_features}, out: {path2_output_features}')
+                self.conv_blocks_context_path1.append(StackedConvLayers(path1_input_features, path1_output_features, num_conv_per_stage,
                                                                 self.conv_op, self.conv_kwargs, self.norm_op,
                                                                 self.norm_op_kwargs, self.dropout_op,
                                                                 self.dropout_op_kwargs, self.nonlin, self.nonlin_kwargs,
                                                                 first_stride, basic_block=basic_block))
-                self.conv_blocks_context_path2.append(StackedConvLayers(path_input_features, path_output_features, num_conv_per_stage,
+                self.conv_blocks_context_path2.append(StackedConvLayers(path2_input_features, path2_output_features, num_conv_per_stage,
                                                                 self.conv_op, self.conv_kwargs, self.norm_op,
                                                                 self.norm_op_kwargs, self.dropout_op,
                                                                 self.dropout_op_kwargs, self.nonlin, self.nonlin_kwargs,
                                                                 first_stride, basic_block=basic_block))
             else:
                 # common path in encoder
+                print(f'Common path in: {input_features}, out: {output_features}')
                 self.conv_blocks_context.append(StackedConvLayers(input_features, output_features, num_conv_per_stage,
                                                                 self.conv_op, self.conv_kwargs, self.norm_op,
                                                                 self.norm_op_kwargs, self.dropout_op,
