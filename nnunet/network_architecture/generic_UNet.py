@@ -362,8 +362,7 @@ class Generic_UNet(SegmentationNetwork):
             idx = -(2 + u)
             if num_pool - u -1 < self.merge_after_n_blocks:
                 idx += 2 + self.merge_after_n_blocks
-                nfeatures_from_skip = self.conv_blocks_context_path1[
-                idx].output_channels*2
+                nfeatures_from_skip = self.conv_blocks_context_path1[idx].output_channels + self.conv_blocks_context_path2[idx].output_channels
             else:
                 nfeatures_from_skip = self.conv_blocks_context[
                 idx].output_channels  # self.conv_blocks_context[-1] is bottleneck, so start with -2
@@ -376,7 +375,7 @@ class Generic_UNet(SegmentationNetwork):
                 idx = -(3 + u)
                 if num_pool - u -1 < self.merge_after_n_blocks:
                     idx += 3 + self.merge_after_n_blocks
-                    final_num_features = self.conv_blocks_context_path1[idx].output_channels
+                    final_num_features = self.conv_blocks_context_path1[idx].output_channels + self.conv_blocks_context_path2[idx].output_channels
                 else:
                     final_num_features = self.conv_blocks_context[idx].output_channels
             else:
@@ -447,7 +446,7 @@ class Generic_UNet(SegmentationNetwork):
                 # channels_num_half = int(channels_num/2)
                 # x[:,:channels_num_half]
                 x1 = self.conv_blocks_context_path1[d](x1)
-                x2 = self.conv_blocks_context_path1[d](x2)
+                x2 = self.conv_blocks_context_path2[d](x2)
                 skips.append(torch.cat((x1, x2), dim=1))
             else:
                 if d == self.merge_after_n_blocks:

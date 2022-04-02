@@ -75,16 +75,16 @@
             "name": "train_dual_path",
             "type": "python",
             "request": "launch",
-            "program": "${file}",
+            "program": "/media/medical/gasperp/projects/nnUnet_clone/nnUNet/nnunet/run/run_training.py",
             "console": "integratedTerminal",
             "python": "/opt/conda/bin/python3",
             "justMyCode": false,
             "args": [
-                "nnUNet_train",
+                // "nnUNet_train",
                 "3d_fullres",
                 "nnUNetTrainerV2_noMirroringAxis2",
-                "Task162_onkoi-2019-dual-path-just-CT",
-                "0"
+                "Task169_onkoi-2019-dual-path-just-CT",
+                "all"
             ]
         },
     ]
