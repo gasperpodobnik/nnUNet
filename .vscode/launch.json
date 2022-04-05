@@ -87,5 +87,30 @@
                 "all"
             ]
         },
+        {
+            "name": "predict_dual_path",
+            "type": "python",
+            "request": "launch",
+            "program": "/tmp/nnUNet/nnunet/results/predict.py",
+            "console": "integratedTerminal",
+            "python": "/opt/conda/bin/python3",
+            "justMyCode": false,
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "1"
+            },
+            "args": [
+                "-t",
+                "169",
+                "-o",
+                "/media/medical/projects/head_and_neck/nnUnet/Task169_onkoi-2019-dual-path-just-CT/results-dual-symmetric-path",
+                "-conf",
+                "3d_fullres",
+                "-f",
+                "all",
+                "-tr",
+                "nnUNetTrainerV2_noMirroringAxis2",
+                "--save_seg_masks"
+            ]
+        },
     ]
 }
