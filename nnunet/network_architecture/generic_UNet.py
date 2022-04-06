@@ -271,6 +271,7 @@ class Generic_UNet(SegmentationNetwork):
 
         # real number of input channels
         self.input_channels = input_channels
+        print(f'\ntrue number of input channels {input_channels}\n')
         # assert input_channels == 2, ValueError('number of channels is not 2')
         output_features = base_num_features
         # input_features = input_channels
