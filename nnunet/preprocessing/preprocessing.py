@@ -192,6 +192,7 @@ def resample_data_or_seg(data, new_shape, is_seg, axis=None, order=3, do_separat
             for c in range(data.shape[0]):
                 reshaped.append(resize_fn(data[c], new_shape, order, **kwargs)[None])
             reshaped_final_data = np.vstack(reshaped)
+        print('reshaped')
         return reshaped_final_data.astype(dtype_data)
     else:
         print("no resampling necessary")

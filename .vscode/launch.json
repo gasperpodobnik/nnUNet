@@ -109,7 +109,13 @@
                 "all",
                 "-tr",
                 "nnUNetTrainerV2_noMirroringAxis2",
-                "--save_seg_masks"
+                "--save_seg_masks",
+                "--step_size",
+                "0.75",
+                "--all_in_gpu",
+                "False",
+                "--direct_method",
+                "--disable_tta"
             ]
         },
     ]

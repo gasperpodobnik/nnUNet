@@ -54,6 +54,7 @@ def preprocess_save_to_queue(
     for i, l in enumerate(list_of_lists):
         try:
             output_file = output_files[i]
+            print('---'*10)
             print("preprocessing", output_file)
             d, _, dct = preprocess_fn(l)
             # print(output_file, dct)
@@ -84,11 +85,14 @@ def preprocess_save_to_queue(
             patching system python code. We circumvent that problem here by saving softmax_pred to a npy file that will 
             then be read (and finally deleted) by the Process. save_segmentation_nifti_from_softmax can take either 
             filename or np.ndarray and will handle this automatically"""
-            print(d.shape)
-            if np.prod(d.shape) > (
-                2e9 / 4 * 0.85
-            ):  # *0.85 just to be save, 4 because float32 is 4 bytes
-                print(
+            print("preprocessing\t", d.shape)
+            print("preprocessing\t", np.prod(d.shape))
+            print("preprocessing\t", 2e9 / 4 * 0.85)
+            # if np.prod(d.shape) > (
+            #     2e9 / 4 * 0.85
+            # ):  # *0.85 just to be save, 4 because float32 is 4 bytes
+            if True:
+                print("preprocessing\t", 
                     "This output is too large for python process-process communication. "
                     "Saving output temporarily to disk"
                 )
@@ -98,14 +102,14 @@ def preprocess_save_to_queue(
         except KeyboardInterrupt:
             raise KeyboardInterrupt
         except Exception as e:
-            print("error in", l)
+            print("preprocessing\t", "error in", l)
             print(e)
     q.put("end")
     if len(errors_in) > 0:
-        print("There were some errors in the following cases:", errors_in)
-        print("These cases were ignored.")
+        print("preprocessing\t", "There were some errors in the following cases:", errors_in)
+        print("preprocessing\t", "These cases were ignored.")
     else:
-        print("This worker has ended successfully, no errors to report")
+        print("preprocessing\t", "This worker has ended successfully, no errors to report")
     # restore output
     # sys.stdout = sys.__stdout__
 
@@ -273,7 +277,8 @@ def predict_cases(
             os.remove(d)
             d = data
 
-        print("predicting", output_filename)
+        print('==='*10)
+        print("predicting\t", output_filename)
         trainer.load_checkpoint_ram(params[0], False)
         softmax = trainer.predict_preprocessed_data_return_seg_and_softmax(
             d,
@@ -330,7 +335,7 @@ def predict_cases(
         if np.prod(softmax.shape) > (
             2e9 / bytes_per_voxel * 0.85
         ):  # * 0.85 just to be save
-            print(
+            print("predicting\t", 
                 "This output is too large for python process-process communication. Saving output temporarily to disk"
             )
             np.save(output_filename[:-7] + ".npy", softmax)
@@ -357,7 +362,7 @@ def predict_cases(
             )
         )
 
-    print("inference done. Now waiting for the segmentation export to finish...")
+    print("predicting\t", "inference done. Now waiting for the segmentation export to finish...")
     _ = [i.get() for i in results]
     # now apply postprocessing
     # first load the postprocessing properties if they are present. Else raise a well visible warning
