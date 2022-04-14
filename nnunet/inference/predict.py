@@ -85,14 +85,12 @@ def preprocess_save_to_queue(
             patching system python code. We circumvent that problem here by saving softmax_pred to a npy file that will 
             then be read (and finally deleted) by the Process. save_segmentation_nifti_from_softmax can take either 
             filename or np.ndarray and will handle this automatically"""
-            print("preprocessing\t", d.shape)
-            print("preprocessing\t", np.prod(d.shape))
-            print("preprocessing\t", 2e9 / 4 * 0.85)
+            print(d.shape)
             # if np.prod(d.shape) > (
             #     2e9 / 4 * 0.85
             # ):  # *0.85 just to be save, 4 because float32 is 4 bytes
             if True:
-                print("preprocessing\t", 
+                print(
                     "This output is too large for python process-process communication. "
                     "Saving output temporarily to disk"
                 )

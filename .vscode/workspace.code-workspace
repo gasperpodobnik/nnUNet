@@ -8,6 +8,9 @@
 		},
 		{
 			"path": "../../surface-distance"
+		},
+		{
+			"path": "../../nnunet"
 		}
 	],
 	"settings": {}
