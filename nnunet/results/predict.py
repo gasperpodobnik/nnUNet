@@ -79,10 +79,11 @@ def main():
         help="nnU-Net model to use: default is final model, but in case inference is done before model training is complete you may want to specifify 'model_best.model.pkl' or sth else",
     )
     parser.add_argument(
-        "--just_test", 
-        default=False,
-        action="store_true",
-        help="just test",
+        "--phases_to_predict", 
+        nargs="+",
+        type=str,
+        default=['train', 'test'],
+        help="which phases to predict",
     )
     parser.add_argument(
         "--gpus",
@@ -113,10 +114,10 @@ def main():
         help="nnUNet_predict parameter",
     )
     parser.add_argument(
-        "--direct_method", 
-        default=False,
-        action="store_true",
-        help="method for getting predictions",
+        "--inference_method", 
+        default='one-by-one',
+        type=str,
+        help="method for getting predictions, can be: `one-by-one`, `folder`, `cmd`",
     )
     parser.add_argument(
         "--step_size", type=float, default=0.5, required=False, help="don't touch"
@@ -131,16 +132,9 @@ def main():
 
     # running in terminal
     args = vars(parser.parse_args())
-    
-    all_in_gpu = args["all_in_gpu"]
-    assert all_in_gpu in ["None", "False", "True"]
-    if all_in_gpu == "None":
-        all_in_gpu = None
-    elif all_in_gpu == "True":
-        all_in_gpu = True
-    elif all_in_gpu == "False":
-        all_in_gpu = False
 
+    assert len(args['phases_to_predict']) > 0, 'there should be at least one phase'
+    
     all_in_gpu = args["all_in_gpu"]
     assert all_in_gpu in ["None", "False", "True"]
     if all_in_gpu == "None":
@@ -279,11 +273,12 @@ def main():
 
     # create dict with paths split on train, val (if fold not 'all') and test
     splits_final_dict = {}
-    splits_final_dict["test"] = splits_iterator(
-        [Path(i).name[: -len(".nii.gz")] for i in dataset_json_dict["test"]],
-        dir_name="Ts",
-    )
-    if not args['just_test']:
+    if 'test' in args['phases_to_predict']:
+        splits_final_dict["test"] = splits_iterator(
+            [Path(i).name[: -len(".nii.gz")] for i in dataset_json_dict["test"]],
+            dir_name="Ts",
+        )
+    if 'train' in args['phases_to_predict']:
         if args["fold"] != "all":
             with open(
                 join(nnUNet_preprocessed_dir, task_name, "splits_final.pkl"), "rb"
@@ -299,12 +294,13 @@ def main():
                 ]
             )
 
-    images_source_dirs = [
-        join(raw_data_dir, "imagesTs"),
-    ]
+    images_source_dirs = []
 
-    if not args['just_test']:
-        images_source_dirs.append(join(raw_data_dir, "imagesTr"))
+    if 'test' in args['phases_to_predict']:
+        images_source_dirs.append({'phase': 'test', 'path': join(raw_data_dir, "imagesTs")})
+
+    if 'train' in args['phases_to_predict']:
+        images_source_dirs.append({'phase': 'train', 'path': join(raw_data_dir, "imagesTr")})
 
     config_str = f"FOLD-{args['fold']}_TRAINER-{args['trainer_class_name']}_PLANS-{args['plans_name']}_CHK-{args['checkpoint_name']}"
     logging.info(f"settings info: {config_str}")
@@ -315,41 +311,93 @@ def main():
     # prepare temporary dir for predicted segmentations
     base_tmp_dir = f"/tmp/nnunet/predict/{task_name}/{config_str}"
     output_seg_dir = f"{base_tmp_dir}/out"
-    if os.path.exists(base_tmp_dir):
-        shutil.rmtree(base_tmp_dir)
-    os.makedirs(output_seg_dir)
+    # if os.path.exists(base_tmp_dir):
+    #     shutil.rmtree(base_tmp_dir)
+    os.makedirs(output_seg_dir, exist_ok=True)
 
     # prepare directories in case predicted segmentations are to be saved
     if args["save_seg_masks"]:
         pred_seg_out_dir = join(args["out_dir"], config_str)
-        out_dirs = {
-            "test": join(pred_seg_out_dir, "test"),
-        }
-        if not args['just_test']:
+        out_dirs = {}
+
+        if 'test' in args['phases_to_predict']:
+            out_dirs["test"] = join(pred_seg_out_dir, "test"),
+            os.makedirs(out_dirs["test"], exist_ok=True)
+        if 'train' in args['phases_to_predict']:
             out_dirs["train"] = join(pred_seg_out_dir, "train")
             out_dirs["val"] = join(pred_seg_out_dir, "val")
             os.makedirs(out_dirs["train"], exist_ok=True)
             if "val" in splits_final_dict.keys():
                 os.makedirs(out_dirs["val"], exist_ok=True)
-        os.makedirs(out_dirs["test"], exist_ok=True)
 
 
     
 
-    try:
-        if args['direct_method']:
-            from nnunet.inference.predict import predict_from_folder
-
-            model_folder_name = join(
+    model_folder_name = join(
                 nnUNet_configuration_dir,
                 trainer_classes_and_plans_dir
             )
-            print("using model stored in ", model_folder_name)
-            assert isdir(model_folder_name), (
-                "model output folder not found. Expected: %s" % model_folder_name
-            )
+    print("using model stored in ", model_folder_name)
+    assert isdir(model_folder_name), (
+        "model output folder not found. Expected: %s" % model_folder_name
+    )
+    try:
+        if args['inference_method'] == 'one-by-one':
+            assert args["mode"] == 'normal', NotImplementedError('current implementation for one-by-one_method supports only normal mode')
+            from nnunet.inference.predict import predict_cases, check_input_folder_and_return_caseIDs, subfiles, load_pickle
+            import torch
 
-            for in_dir in images_source_dirs:
+            expected_num_modalities = load_pickle(join(model_folder_name, "plans.pkl"))["num_modalities"]
+            for _dict_tmp in images_source_dirs:
+                phase = _dict_tmp['phase']
+                in_dir = _dict_tmp['path']
+                case_ids = check_input_folder_and_return_caseIDs(
+                    in_dir, expected_num_modalities
+                )
+                # case_ids = case_ids[:28]
+                output_files = [join(out_dirs[phase], i + ".nii.gz") for i in case_ids]
+                all_files = subfiles(in_dir, suffix=".nii.gz", join=False, sort=True)
+                list_of_lists = [
+                    [
+                        join(in_dir, i)
+                        for i in all_files
+                        if i[: len(j)].startswith(j) and len(i) == (len(j) + 12)
+                    ]
+                    for j in case_ids
+                ]
+
+                for input_filename, output_filename in zip(list_of_lists, output_files):
+                    step_size = args["step_size"]
+                    do_tta=not args["disable_tta"]
+                    if '006' in input_filename[0] or '028' in input_filename[0]:
+                        print('continue')
+                        continue
+                    try:
+                        torch.cuda.empty_cache()
+                        predict_cases(
+                            model=model_folder_name,
+                            list_of_lists=[input_filename],
+                            output_filenames=[output_filename],
+                            folds=[args["fold"]],
+                            save_npz=False,
+                            num_threads_preprocessing=args["num_threads_preprocessing"],
+                            num_threads_nifti_save=args["num_threads_nifti_save"],
+                            segs_from_prev_stage=None,
+                            do_tta=do_tta,
+                            mixed_precision=not False,
+                            overwrite_existing=False,
+                            all_in_gpu=all_in_gpu,
+                            step_size=step_size,
+                            checkpoint_name=args["checkpoint_name"],
+                            segmentation_export_kwargs=None,
+                        )
+                    except:
+                        logging.warning(f'cannot predict {input_filename}')
+        elif args['inference_method'] == 'folder':
+            from nnunet.inference.predict import predict_from_folder
+            for _dict_tmp in images_source_dirs:
+                phase = _dict_tmp['phase']
+                in_dir = _dict_tmp['path']
                 print(f'\n\nSTARTING predition for {in_dir}\n\n')
                 predict_from_folder(
                     model=model_folder_name,
@@ -371,8 +419,10 @@ def main():
                     checkpoint_name=args["checkpoint_name"],
                 )
 
-        else:
-            for in_dir in images_source_dirs:
+        elif args['inference_method'] == 'cmd':
+            for _dict_tmp in images_source_dirs:
+                phase = _dict_tmp['phase']
+                in_dir = _dict_tmp['path']
                 cmd_list = [
                     "nnUNet_predict",
                     "-i",
@@ -413,10 +463,12 @@ def main():
 
                 logging.info(f"Subprocess exit code was: {subprocess_out.returncode}")
                 logging.info(f"Successfully predicted seg masks from input dir: {in_dir}")
+        else:
+            raise NotImplementedError('Unknown --inference_method was specified')
 
     except Exception as e:
         logging.error(f"Failed due to the following error: {e}")
-        shutil.rmtree(output_seg_dir)
+        # shutil.rmtree(output_seg_dir)
         sys.exit()
 
     try:
