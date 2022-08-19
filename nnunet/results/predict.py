@@ -1,27 +1,21 @@
-import numpy as np
-import argparse
-import copy
-import glob
-import json
 import logging
+logging.info('start\n\n\n')
+import argparse
+import json
 import os
 import pickle
-import random
 import shutil
 import sys
-import tempfile
 from os.path import isdir, join
 from pathlib import Path
-from tqdm.std import tqdm
+from tqdm import tqdm
 import subprocess
 
 import pandas as pd
 
-# sys.path.append(r"/media/medical/gasperp/projects")
-# import utilities
-# sys.path.append(r"/media/medical/gasperp/projects/surface-distance")
+sys.path.append(r"/media/medical/gasperp/projects")
+sys.path.append(r"/media/medical/gasperp/projects/surface-distance")
 from surface_distance import compute_metrics_deepmind
-
 
 def main():
     # Set parser
@@ -34,7 +28,13 @@ def main():
         "--task_number",
         type=int,
         required=True,
-        help="three digit number XXX that comes after TaskXXX_YYYYYY",
+        help="Task number of the model used for inference three digit number XXX that comes after TaskXXX_YYYYYY",
+    )
+    parser.add_argument(
+        "--dataset_task_number",
+        type=int,
+        default=None,
+        help="Only use this if dataset task number is different that model task number",
     )
     parser.add_argument(
         "-f",
@@ -82,7 +82,7 @@ def main():
         "--phases_to_predict", 
         nargs="+",
         type=str,
-        default=['train', 'test'],
+        default=['test', 'train'],
         help="which phases to predict",
     )
     parser.add_argument(
@@ -122,6 +122,10 @@ def main():
     parser.add_argument(
         "--step_size", type=float, default=0.5, required=False, help="don't touch"
     )
+    # step_size: When running sliding window prediction, the step size determines the distance between adjacent
+    # predictions. The smaller the step size, the denser the predictions (and the longer it takes!). Step size is given
+    # as a fraction of the patch_size. 0.5 is the default and means that wen advance by patch_size * 0.5 between
+    # predictions. step_size cannot be larger than 1!
     parser.add_argument(
         "--all_in_gpu",
         type=str,
@@ -143,6 +147,11 @@ def main():
         all_in_gpu = True
     elif all_in_gpu == "False":
         all_in_gpu = False
+        
+    inference_on_unseen_dataset = True
+    if args["dataset_task_number"] is None:
+        args["dataset_task_number"] = args["task_number"]
+        inference_on_unseen_dataset = False
 
     # paths definition
     nnUNet_raw_data_base_dir = os.environ["nnUNet_raw_data_base"]
@@ -156,28 +165,39 @@ def main():
 
     ## checkers for input parameters
     # input task
-    existing_tasks = {
+    existing_tasks_for_models = {
         int(i.split("_")[0][-3:]): join(nnUNet_configuration_dir, i)
         for i in os.listdir(nnUNet_configuration_dir)
         if i.startswith("Task") and os.path.isdir(join(nnUNet_configuration_dir, i))
     }
+    existing_tasks_for_datasets = {
+        int(i.split("_")[0][-3:]): join(base_nnunet_dir_on_medical, i)
+        for i in os.listdir(base_nnunet_dir_on_medical)
+        if i.startswith("Task") and os.path.isdir(join(base_nnunet_dir_on_medical, i))
+    }
+    existing_tasks_for_datasets = {**existing_tasks_for_models, **existing_tasks_for_datasets}
     assert (
-        args["task_number"] in existing_tasks.keys()
-    ), f"Could not find task num.: {args['task_number']}. Found the following task/directories: {existing_tasks}"
+        args["task_number"] in existing_tasks_for_models.keys()
+    ), f"Could not find task num.: {args['task_number']}. Found the following task/directories: {existing_tasks_for_models}"
+    assert (
+        args["dataset_task_number"] in existing_tasks_for_datasets.keys()
+    ), f"Could not find task num.: {args['dataset_task_number']}. Found the following task/directories: {existing_tasks_for_datasets}"
 
-    task_dir = existing_tasks[args["task_number"]]
+    model_task_dir = existing_tasks_for_models[args["task_number"]]
+    dataset_task_dir = existing_tasks_for_datasets[args["dataset_task_number"]]
     # e.g.: '/storage/nnUnet/nnUNet_trained_models/nnUNet/3d_fullres/Task152_onkoi-2019-batch-1-and-2-both-modalities-biggest-20-organs-new'
-    task_name = Path(task_dir).name
+    model_task_name = Path(model_task_dir).name
+    dataset_task_name = Path(dataset_task_dir).name
     # e.g.: task_name = 'Task152_onkoi-2019-batch-1-and-2-both-modalities-biggest-20-organs-new'
 
     ## checkers for input parameters
     # nnunet trainer class
-    trainer_classes_list = [i.split("__")[0] for i in os.listdir(task_dir)]
-    assert len(trainer_classes_list) > 0, f"no trainer subfolders found in {task_dir}"
+    trainer_classes_list = [i.split("__")[0] for i in os.listdir(model_task_dir)]
+    assert len(trainer_classes_list) > 0, f"no trainer subfolders found in {model_task_dir}"
     if args["trainer_class_name"] is None:
         if len(trainer_classes_list) > 1:
             ValueError(
-                f"Cannot automatically determine trainer class name, since multiple trainer class folders were found in {task_dir}. \nPlease specfiy exact '--trainer_class_name'"
+                f"Cannot automatically determine trainer class name, since multiple trainer class folders were found in {model_task_dir}. \nPlease specfiy exact '--trainer_class_name'"
             )
         else:
             args["trainer_class_name"] = trainer_classes_list[0]
@@ -187,7 +207,7 @@ def main():
     # determine which plans version was used, raise error if multiple plans exist
     plans_list = [
         i.split("__")[-1]
-        for i in os.listdir(task_dir)
+        for i in os.listdir(model_task_dir)
         if i.startswith(f"{args['trainer_class_name']}__")
     ]
     assert (
@@ -199,7 +219,7 @@ def main():
     ] = f"{args['trainer_class_name']}__{args['plans_name']}"
 
     trainer_classes_and_plans_dir = join(
-        task_dir, args["trainer_classes_and_plans_dir_name"]
+        model_task_dir, args["trainer_classes_and_plans_dir_name"]
     )
 
     ## checkers for input parameters
@@ -244,15 +264,22 @@ def main():
     ## data paths retrieval
     # get dict, dict of dict of filepaths: {'train': {img_name: {'images': {modality0: fpath, ...}, 'label': fpath} ...}, ...}
     # load dataset json
-    with open(join(nnUNet_preprocessed_dir, task_name, "dataset.json"), "r") as fp:
-        dataset_json_dict = json.load(fp)
+    with open(join(nnUNet_preprocessed_dir, model_task_name, "dataset.json"), "r") as fp:
+        model_dataset_json_dict = json.load(fp)
     # create modalities dict
     four_digit_ids = {
-        m: str.zfill(str(int(i)), 4) for i, m in dataset_json_dict["modality"].items()
+        m: str.zfill(str(int(i)), 4) for i, m in model_dataset_json_dict["modality"].items()
     }
 
     # get image paths with modality four digit id
-    raw_data_dir = join(nnUNet_raw_data_base_dir, "nnUNet_raw_data", task_name)
+    raw_data_dir = join(nnUNet_raw_data_base_dir, "nnUNet_raw_data", dataset_task_name)
+    if not os.path.exists(raw_data_dir):
+        raw_data_dir = join(base_nnunet_dir_on_medical, dataset_task_name)
+    assert os.path.exists(raw_data_dir), ValueError(f'raw dataset dir does now exist {raw_data_dir}')
+    
+    with open(join(raw_data_dir, "dataset.json"), "r") as fp:
+        dataset_dataset_json_dict = json.load(fp)
+    
     img_modality_fpaths_dict = lambda fname, dir_name: {
         modality: join(raw_data_dir, f"images{dir_name}", fname + f"_{m_id}.nii.gz")
         for modality, m_id in four_digit_ids.items()
@@ -275,13 +302,13 @@ def main():
     splits_final_dict = {}
     if 'test' in args['phases_to_predict']:
         splits_final_dict["test"] = splits_iterator(
-            [Path(i).name[: -len(".nii.gz")] for i in dataset_json_dict["test"]],
+            [Path(i).name[: -len(".nii.gz")] for i in model_dataset_json_dict["test"]],
             dir_name="Ts",
         )
     if 'train' in args['phases_to_predict']:
-        if args["fold"] != "all":
+        if args["fold"] != "all" and (not inference_on_unseen_dataset):
             with open(
-                join(nnUNet_preprocessed_dir, task_name, "splits_final.pkl"), "rb"
+                join(nnUNet_preprocessed_dir, model_task_name, "splits_final.pkl"), "rb"
             ) as f:
                 _dict = pickle.load(f)
             splits_final_dict["train"] = splits_iterator(_dict[int(args["fold"])]["train"])
@@ -290,26 +317,26 @@ def main():
             splits_final_dict["train"] = splits_iterator(
                 [
                     Path(_dict["image"]).name[: -len(".nii.gz")]
-                    for _dict in dataset_json_dict["training"]
+                    for _dict in model_dataset_json_dict["training"]
                 ]
             )
 
     images_source_dirs = []
 
     if 'test' in args['phases_to_predict']:
-        images_source_dirs.append({'phase': 'test', 'path': join(raw_data_dir, "imagesTs")})
+        images_source_dirs.append({'phase': 'test', 'img_dir': join(raw_data_dir, "imagesTs"), 'gt_dir': join(raw_data_dir, "labelsTs")})
 
     if 'train' in args['phases_to_predict']:
-        images_source_dirs.append({'phase': 'train', 'path': join(raw_data_dir, "imagesTr")})
+        images_source_dirs.append({'phase': 'train', 'img_dir': join(raw_data_dir, "imagesTr"), 'gt_dir': join(raw_data_dir, "labelsTr")})
 
-    config_str = f"FOLD-{args['fold']}_TRAINER-{args['trainer_class_name']}_PLANS-{args['plans_name']}_CHK-{args['checkpoint_name']}"
+    config_str = f"FOLD-{args['fold']}_TRAINER-{args['trainer_class_name']}_PLANS-{args['plans_name']}_CHK-{args['checkpoint_name']}_DATASET-{args['dataset_task_number']}_TTA-{not args['disable_tta']}_STEP-{args['step_size']}"
     logging.info(f"settings info: {config_str}")
     if args["out_dir"] is None:
-        args["out_dir"] = join(base_nnunet_dir_on_medical, task_name, "results")
+        args["out_dir"] = join(base_nnunet_dir_on_medical, model_task_name, "results")
     os.makedirs(args["out_dir"], exist_ok=True)
 
     # prepare temporary dir for predicted segmentations
-    base_tmp_dir = f"/tmp/nnunet/predict/{task_name}/{config_str}"
+    base_tmp_dir = f"/tmp/nnunet/predict/{model_task_name}/{config_str}"
     output_seg_dir = f"{base_tmp_dir}/out"
     # if os.path.exists(base_tmp_dir):
     #     shutil.rmtree(base_tmp_dir)
@@ -321,7 +348,7 @@ def main():
         out_dirs = {}
 
         if 'test' in args['phases_to_predict']:
-            out_dirs["test"] = join(pred_seg_out_dir, "test"),
+            out_dirs["test"] = join(pred_seg_out_dir, "test")
             os.makedirs(out_dirs["test"], exist_ok=True)
         if 'train' in args['phases_to_predict']:
             out_dirs["train"] = join(pred_seg_out_dir, "train")
@@ -341,6 +368,8 @@ def main():
     assert isdir(model_folder_name), (
         "model output folder not found. Expected: %s" % model_folder_name
     )
+    
+    successfully_predicted = []
     try:
         if args['inference_method'] == 'one-by-one':
             assert args["mode"] == 'normal', NotImplementedError('current implementation for one-by-one_method supports only normal mode')
@@ -350,58 +379,64 @@ def main():
             expected_num_modalities = load_pickle(join(model_folder_name, "plans.pkl"))["num_modalities"]
             for _dict_tmp in images_source_dirs:
                 phase = _dict_tmp['phase']
-                in_dir = _dict_tmp['path']
+                img_dir = _dict_tmp['img_dir']
                 case_ids = check_input_folder_and_return_caseIDs(
-                    in_dir, expected_num_modalities
+                    img_dir, expected_num_modalities
                 )
                 # case_ids = case_ids[:28]
                 output_files = [join(out_dirs[phase], i + ".nii.gz") for i in case_ids]
-                all_files = subfiles(in_dir, suffix=".nii.gz", join=False, sort=True)
+                gt_files = [join(_dict_tmp['gt_dir'], i + ".nii.gz") for i in case_ids]
+                all_files = subfiles(img_dir, suffix=".nii.gz", join=False, sort=True)
                 list_of_lists = [
                     [
-                        join(in_dir, i)
+                        join(img_dir, i)
                         for i in all_files
                         if i[: len(j)].startswith(j) and len(i) == (len(j) + 12)
                     ]
                     for j in case_ids
                 ]
 
-                for input_filename, output_filename in zip(list_of_lists, output_files):
+                for input_filename, output_filename, gt_filename in zip(list_of_lists, output_files, gt_files):
                     step_size = args["step_size"]
                     do_tta=not args["disable_tta"]
-                    if '006' in input_filename[0] or '028' in input_filename[0]:
-                        print('continue')
-                        continue
                     try:
                         torch.cuda.empty_cache()
-                        predict_cases(
-                            model=model_folder_name,
-                            list_of_lists=[input_filename],
-                            output_filenames=[output_filename],
-                            folds=[args["fold"]],
-                            save_npz=False,
-                            num_threads_preprocessing=args["num_threads_preprocessing"],
-                            num_threads_nifti_save=args["num_threads_nifti_save"],
-                            segs_from_prev_stage=None,
-                            do_tta=do_tta,
-                            mixed_precision=not False,
-                            overwrite_existing=False,
-                            all_in_gpu=all_in_gpu,
-                            step_size=step_size,
-                            checkpoint_name=args["checkpoint_name"],
-                            segmentation_export_kwargs=None,
-                        )
+                        if not os.path.exists(output_filename):
+                            predict_cases(
+                                model=model_folder_name,
+                                list_of_lists=[input_filename],
+                                output_filenames=[output_filename],
+                                folds=[args["fold"]],
+                                save_npz=False,
+                                num_threads_preprocessing=args["num_threads_preprocessing"],
+                                num_threads_nifti_save=args["num_threads_nifti_save"],
+                                segs_from_prev_stage=None,
+                                do_tta=do_tta,
+                                mixed_precision=not False,
+                                overwrite_existing=False,
+                                all_in_gpu=all_in_gpu,
+                                step_size=step_size,
+                                checkpoint_name=args["checkpoint_name"],
+                                segmentation_export_kwargs=None,
+                            )
+                        else:
+                            logging.info('Skipping inference, because output file exists')
+                        successfully_predicted.append({'fname': Path(input_filename[0]).name.replace('.nii.gz', ''), 
+                                                       'pred_fpath': output_filename, 
+                                                       'gt_fpath': gt_filename, 
+                                                       'phase': phase})
                     except:
                         logging.warning(f'cannot predict {input_filename}')
         elif args['inference_method'] == 'folder':
+            # TODO implement saving results paths to `successfully_predicted`
             from nnunet.inference.predict import predict_from_folder
             for _dict_tmp in images_source_dirs:
                 phase = _dict_tmp['phase']
-                in_dir = _dict_tmp['path']
-                print(f'\n\nSTARTING predition for {in_dir}\n\n')
+                img_dir = _dict_tmp['img_dir']
+                print(f'\n\nSTARTING predition for {img_dir}\n\n')
                 predict_from_folder(
                     model=model_folder_name,
-                    input_folder=in_dir,
+                    input_folder=img_dir,
                     output_folder=output_seg_dir,
                     folds=[args["fold"]],
                     save_npz=False,
@@ -418,15 +453,21 @@ def main():
                     step_size=args["step_size"],
                     checkpoint_name=args["checkpoint_name"],
                 )
+                for fn in os.listdir(output_seg_dir):
+                    successfully_predicted.append({'fname': fn.replace('.nii.gz', ''), 
+                                                        'pred_fpath': join(output_seg_dir, fn), 
+                                                        'gt_fpath': join(_dict_tmp['gt_dir'], fn), 
+                                                        'phase': phase})
 
         elif args['inference_method'] == 'cmd':
+            # TODO implement saving results paths to `successfully_predicted`
             for _dict_tmp in images_source_dirs:
                 phase = _dict_tmp['phase']
-                in_dir = _dict_tmp['path']
+                img_dir = _dict_tmp['img_dir']
                 cmd_list = [
                     "nnUNet_predict",
                     "-i",
-                    in_dir,
+                    img_dir,
                     "-o",
                     output_seg_dir,
                     "-t",
@@ -462,7 +503,7 @@ def main():
                 subprocess_out = subprocess.run(cmd_list, check=True)
 
                 logging.info(f"Subprocess exit code was: {subprocess_out.returncode}")
-                logging.info(f"Successfully predicted seg masks from input dir: {in_dir}")
+                logging.info(f"Successfully predicted seg masks from input dir: {img_dir}")
         else:
             raise NotImplementedError('Unknown --inference_method was specified')
 
@@ -472,16 +513,22 @@ def main():
         sys.exit()
 
     try:
-        organs_labels_dict = {
-            organ: int(lbl) for lbl, organ in dataset_json_dict["labels"].items()
+        organs_labels_dict_pred = {
+            organ: int(lbl) for lbl, organ in model_dataset_json_dict["labels"].items()
         }
-        logging.info(f"Found the following organs and labels: {organs_labels_dict}")
+        organs_labels_dict_gt = {
+            organ: int(lbl) for lbl, organ in dataset_dataset_json_dict["labels"].items()
+        }
+        logging.debug(f"Found the following organs and labels GT dict: {organs_labels_dict_gt}")
+        logging.debug(f"Found the following organs and labels PRED dict: {organs_labels_dict_pred}")
         compute_metrics = compute_metrics_deepmind(
-            organs_labels_dict=organs_labels_dict
+            organs_labels_dict_gt=organs_labels_dict_gt, organs_labels_dict_pred=organs_labels_dict_pred
         )
         settings_info = {
             "model_task_number": args["task_number"],
-            "model_task_name": task_name,
+            "model_task_name": model_task_name,
+            "dataset_task_number": args["dataset_task_number"],
+            "dataset_task_name": dataset_task_name,
             "fold": args["fold"],
             "trainer_class": args["trainer_class_name"],
             "plans_name": args["plans_name"],
@@ -490,26 +537,27 @@ def main():
         }
         dfs = []
 
-        for phase, phase_dict in tqdm(
-            splits_final_dict.items(), total=len(splits_final_dict)
+        for case in tqdm(
+            successfully_predicted, total=len(successfully_predicted)
         ):
-            settings_info["phase"] = phase
-            for fname, fname_dict in tqdm(phase_dict.items(), total=len(phase_dict)):
-                settings_info["fname"] = fname
+            settings_info["phase"] = case['phase']
+            settings_info["fname"] = case['fname']
 
-                gt_fpath = fname_dict["label"]
-                pred_fpath = join(output_seg_dir, fname + ".nii.gz")
+            gt_fpath = case['gt_fpath']
+            pred_fpath = case['pred_fpath']
 
-                out_dict_tmp = compute_metrics.execute(
-                    fpath_gt=gt_fpath, fpath_pred=pred_fpath
-                )
-                df = pd.DataFrame.from_dict(out_dict_tmp)
-                for k, val in settings_info.items():
-                    df[k] = val
-                dfs.append(df)
+            out_dict_tmp = compute_metrics.execute(
+                fpath_gt=gt_fpath, fpath_pred=pred_fpath
+            )
+            df = pd.DataFrame.from_dict(out_dict_tmp)
+            df['gt_fpath']=gt_fpath
+            df['pred_fpath']=pred_fpath
+            for k, val in settings_info.items():
+                df[k] = val
+            dfs.append(df)
 
-                if args["save_seg_masks"]:
-                    shutil.copy2(pred_fpath, join(out_dirs[phase], fname + ".nii.gz"))
+            # if args["save_seg_masks"]:
+            #     shutil.copy2(pred_fpath, join(out_dirs[phase], fname + ".nii.gz"))
 
         csv_path = join(args["out_dir"], f"{csv_name}.csv")
         if os.path.exists(csv_path):
