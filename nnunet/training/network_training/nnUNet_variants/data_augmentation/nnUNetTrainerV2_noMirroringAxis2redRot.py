@@ -20,3 +20,5 @@ class nnUNetTrainerV2_noMirroringAxis2(nnUNetTrainerV2):
     def setup_DA_params(self):
         super().setup_DA_params()
         self.data_aug_params["mirror_axes"] = (0, 1)
+        self.data_aug_params["rotation_x"] = (-90/180*pi, 90/180*pi)
+        print("rotation_x", self.data_aug_params["rotation_x"])

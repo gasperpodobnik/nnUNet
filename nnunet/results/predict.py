@@ -425,8 +425,8 @@ def main():
                                                        'pred_fpath': output_filename, 
                                                        'gt_fpath': gt_filename, 
                                                        'phase': phase})
-                    except:
-                        logging.warning(f'cannot predict {input_filename}')
+                    except Exception as e:
+                        logging.error(f"Failed due to predict case {input_filename} due to the following error: {e}")
         elif args['inference_method'] == 'folder':
             # TODO implement saving results paths to `successfully_predicted`
             from nnunet.inference.predict import predict_from_folder
@@ -541,7 +541,7 @@ def main():
             successfully_predicted, total=len(successfully_predicted)
         ):
             settings_info["phase"] = case['phase']
-            settings_info["fname"] = case['fname']
+            # settings_info["fname"] = case['fname']
 
             gt_fpath = case['gt_fpath']
             pred_fpath = case['pred_fpath']
@@ -550,8 +550,6 @@ def main():
                 fpath_gt=gt_fpath, fpath_pred=pred_fpath
             )
             df = pd.DataFrame.from_dict(out_dict_tmp)
-            df['gt_fpath']=gt_fpath
-            df['pred_fpath']=pred_fpath
             for k, val in settings_info.items():
                 df[k] = val
             dfs.append(df)
@@ -564,7 +562,7 @@ def main():
             logging.info(
                 f"Found existing .csv file on location {csv_path}, merging existing and new dataframe"
             )
-            existing_df = [pd.read_csv(csv_path)] + dfs
+            existing_df = [pd.read_csv(csv_path, index_col=0)] + dfs
             pd.concat(existing_df, ignore_index=True).to_csv(csv_path)
         else:
             pd.concat(dfs, ignore_index=True).to_csv(csv_path)
