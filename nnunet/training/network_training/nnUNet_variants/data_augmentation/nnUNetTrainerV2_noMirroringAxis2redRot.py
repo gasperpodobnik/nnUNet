@@ -16,7 +16,7 @@
 from nnunet.training.network_training.nnUNetTrainerV2 import nnUNetTrainerV2
 
 pi = 3.141592653589793
-class nnUNetTrainerV2_noMirroringAxis2(nnUNetTrainerV2):    
+class nnUNetTrainerV2_noMirroringAxis2redRot(nnUNetTrainerV2):    
     def setup_DA_params(self):
         super().setup_DA_params()
         self.data_aug_params["mirror_axes"] = (0, 1)
