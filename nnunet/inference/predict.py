@@ -1101,15 +1101,10 @@ if __name__ == "__main__":
     #                     help="order of interpolation along z is z is done differently")
     # parser.add_argument("--force_separate_z", required=False, default="None", type=str,
     #                     help="force_separate_z resampling. Can be None, True or False, has no effect if mode=fastest")
-    parser.add_argument(
-        "--disable_mixed_precision",
-        default=False,
-        action="store_true",
-        required=False,
-        help="Predictions are done with mixed precision by default. This improves speed and reduces "
-        "the required vram. If you want to disable mixed precision you can set this flag. Note "
-        "that yhis is not recommended (mixed precision is ~2x faster!)",
-    )
+    parser.add_argument('--disable_mixed_precision', default=False, action='store_true', required=False,
+                        help='Predictions are done with mixed precision by default. This improves speed and reduces '
+                             'the required vram. If you want to disable mixed precision you can set this flag. Note '
+                             'that this is not recommended (mixed precision is ~2x faster!)')
 
     args = parser.parse_args()
     input_folder = args.input_folder

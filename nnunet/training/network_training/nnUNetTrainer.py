@@ -14,6 +14,7 @@
 
 
 import shutil
+import traceback
 from collections import OrderedDict
 from multiprocessing import Pool
 from time import sleep
@@ -931,21 +932,26 @@ class nnUNetTrainer(NetworkTrainer):
         for f in subfiles(self.gt_niftis_folder, suffix=".nii.gz"):
             success = False
             attempts = 0
-            e = None
             while not success and attempts < 10:
                 try:
                     shutil.copy(f, gt_nifti_folder)
                     success = True
-                except OSError as e:
+                except OSError:
+                    print("Could not copy gt nifti file %s into folder %s" % (f, gt_nifti_folder))
+                    traceback.print_exc()
                     attempts += 1
                     sleep(1)
             if not success:
+<<<<<<< HEAD
                 print(
                     "Could not copy gt nifti file %s into folder %s"
                     % (f, gt_nifti_folder)
                 )
                 if e is not None:
                     raise e
+=======
+                raise OSError(f"Something went wrong while copying nifti files to {gt_nifti_folder}. See above for the trace.")
+>>>>>>> aa53b3b87130ad78f0a28e6169a83215d708d659
 
         self.network.train(current_mode)
 

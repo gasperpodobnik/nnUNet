@@ -48,6 +48,8 @@ Please also cite this paper if you are using nnU-Net for your research!
 
 # Table of Contents
 
+- [nnU-Net](#nnu-net)
+- [Table of Contents](#table-of-contents)
 - [Installation](#installation)
 - [Usage](#usage)
   - [How to run nnU-Net on a new dataset](#how-to-run-nnu-net-on-a-new-dataset)
@@ -64,9 +66,11 @@ Please also cite this paper if you are using nnU-Net for your research!
     - [Run inference](#run-inference)
   - [How to run inference with pretrained models](#how-to-run-inference-with-pretrained-models)
   - [Examples](#examples)
-- [Extending/Changing nnU-Net](#extending-or-changing-nnu-net)
+- [Extending or Changing nnU-Net](#extending-or-changing-nnu-net)
 - [Information on run time and potential performance bottlenecks.](#information-on-run-time-and-potential-performance-bottlenecks)
 - [Common questions and issues](#common-questions-and-issues)
+- [Useful Resources](#useful-resources)
+- [Acknowledgements](#acknowledgements)
 
 # Installation
 
@@ -74,16 +78,7 @@ nnU-Net has been tested on Linux (Ubuntu 16, 18 and 20; centOS, RHEL). We do not
 systems.
 
 nnU-Net requires a GPU! For inference, the GPU should have 4 GB of VRAM. For training nnU-Net models the GPU should have at
-least 10 GB (popular non-datacenter options are the RTX 2080ti, RTX 3080 or RTX 3090). Due to the use of automated mixed
-precision, fastest training times are achieved with the Volta architecture (Titan V, V100 GPUs) when installing pytorch
-the easy way. Since pytorch comes with cuDNN 7.6.5 and tensor core acceleration on Turing GPUs is not supported for 3D
-convolutions in this version, you will not get the best training speeds on Turing GPUs. You can remedy that by compiling pytorch from source
-(see [here](https://github.com/pytorch/pytorch#from-source)) using cuDNN 8.0.2 or newer. This will unlock Turing GPUs
-(RTX 2080ti, RTX 6000) for automated mixed precision training with 3D convolutions and make the training blistering
-fast as well. Note that future versions of pytorch may include cuDNN 8.0.2 or newer by default and
-compiling from source will not be necessary.
-We don't know the speed of Ampere GPUs with vanilla vs self-compiled pytorch yet - this section will be updated as
-soon as we know.
+least 10 GB (popular non-datacenter options are the RTX 2080ti, RTX 3080 or RTX 3090).
 
 For training, we recommend a strong CPU to go along with the GPU. At least 6 CPU cores (12 threads) are recommended. CPU
 requirements are mostly related to data augmentation and scale with the number of input channels. They are thus higher
@@ -96,8 +91,17 @@ environment variable OMP_NUM_THREADS=1 (preferably in your bashrc using `export 
 
 Python 2 is deprecated and not supported. Please make sure you are using Python 3.
 
-1. Install [PyTorch](https://pytorch.org/get-started/locally/). You need at least version 1.6
-2. Install nnU-Net depending on your use case:
+1. Install [PyTorch](https://pytorch.org/get-started/locally/) as described on their website (conda/pip). Please
+   install the latest version and (IMPORTANT!) choose
+   the highest CUDA version compatible with your drivers for maximum performance.
+   **DO NOT JUST `PIP INSTALL NNUNET` WITHOUT PROPERLY INSTALLING PYTORCH FIRST**
+2. Verify that a recent version of pytorch was installed by running
+   ```bash
+   python -c 'import torch;print(torch.backends.cudnn.version())'
+   python -c 'import torch;print(torch.__version__)'
+   ```
+   This should print `8200` and `1.11.0+cu113` (Apr 1st 2022)
+3. Install nnU-Net depending on your use case:
 
    1. For use as **standardized baseline**, **out-of-the-box segmentation algorithm** or for running **inference with pretrained models**:
 
@@ -110,12 +114,14 @@ Python 2 is deprecated and not supported. Please make sure you are using Python 
       pip install -e .
       ```
 
-3. nnU-Net needs to know where you intend to save raw data, preprocessed data and trained models. For this you need to
+4. nnU-Net needs to know where you intend to save raw data, preprocessed data and trained models. For this you need to
    set a few of environment variables. Please follow the instructions [here](documentation/setting_up_paths.md).
-4. (OPTIONAL) Install [hiddenlayer](https://github.com/waleedka/hiddenlayer). hiddenlayer enables nnU-net to generate
+5. (OPTIONAL) Install [hiddenlayer](https://github.com/waleedka/hiddenlayer). hiddenlayer enables nnU-net to generate
    plots of the network topologies it generates (see [Model training](#model-training)). To install hiddenlayer,
    run the following commands:
-   `bash pip install --upgrade git+https://github.com/FabianIsensee/hiddenlayer.git@more_plotted_details#egg=hiddenlayer `
+   ```bash
+   pip install --upgrade git+https://github.com/FabianIsensee/hiddenlayer.git@more_plotted_details#egg=hiddenlayer
+   ```
 
 Installing nnU-Net will add several new commands to your terminal. These commands are used to run the entire nnU-Net
 pipeline. You can execute them from any location on your system. All nnU-Net commands have the prefix `nnUNet_` for
@@ -387,15 +393,13 @@ Once all models are trained, use the following
 command to automatically determine what U-Net configuration(s) to use for test set prediction:
 
 ```bash
-nnUNet_find_best_configuration -m 2d 3d_fullres 3d_lowres 3d_cascade_fullres -t XXX --strict
+nnUNet_find_best_configuration -m 2d 3d_fullres 3d_lowres 3d_cascade_fullres -t XXX
 ```
 
 (all 5 folds need to be completed for all specified configurations!)
 
 On datasets for which the cascade was not configured, use `-m 2d 3d_fullres` instead. If you wish to only explore some
-subset of the configurations, you can specify that with the `-m` command. We recommend setting the
-`--strict` (crash if one of the requested configurations is
-missing) flag. Additional options are available (use `-h` for help).
+subset of the configurations, you can specify that with the `-m` command. Additional options are available (use `-h` for help).
 
 ### Run inference
 
@@ -487,8 +491,21 @@ Click [here](documentation/expected_epoch_times.md).
 We have collected solutions to common [questions](documentation/common_questions.md) and
 [problems](documentation/common_problems_and_solutions.md). Please consult these documents before you open a new issue.
 
----
+# Useful Resources
 
-<img src="HIP_Logo.png" width="512px" />
+- The [nnU-Net Workshop](https://github.com/IML-DKFZ/nnunet-workshop) is a step-by-step introduction to nnU-Net and visualizing
+  results using MITK. Regarding nnU-Net, it includes training and inference examples and an example to train on a new dataset.
+  The workshop itself is a jupyter notebook, which can be executed in GoogleColab.
 
-nnU-Net is developed and maintained by the Applied Computer Vision Lab (ACVL) of the [Helmholtz Imaging Platform](http://helmholtz-imaging.de).
+- This RSNA 2021 Deep Learning Lab [notebook](https://github.com/RSNA/AI-Deep-Learning-Lab-2021/blob/main/sessions/tcia-idc/RSNA_2021_IDC_and_TCIA.ipynb) demonstrates how nnU-Net can be used to analyze public DICOM datasets available in US National Cancer Institute [Imaging Data Commons (IDC)](https://imaging.datacommons.cancer.gov). This notebook demonstrates how datasets suitable for the analysis with nnU-Net can be identified within IDC, how they can be preprocessed from the DICOM format to be usable with nnU-Net, and how the results of the analysis can be visualized in the notebook without having to download anything. NCI Imaging Data Commons is a cloud-based repository of publicly available cancer imaging data co-located with the analysis and exploration tools and resources. IDC is a node within the broader NCI [Cancer Research Data Commons (CRDC)](https://datacommons.cancer.gov/) infrastructure that provides secure access to a large, comprehensive, and expanding collection of cancer research data.
+
+- A [Google Colab notebook](documentation/celltrackingchallenge/MIC-DKFZ.ipynb) example has been added to the repository allowing to train and apply a model to some of the
+  [cell tracking challenge](http://celltrackingchallenge.net/) datasets.
+  You will need to download the data and some extra folders in your Google Drive and connect to it from the notebook
+  for the process to work.
+
+# Acknowledgements
+
+<img src="HI_Logo.png" width="512px" />
+
+nnU-Net is developed and maintained by the Applied Computer Vision Lab (ACVL) of [Helmholtz Imaging](http://helmholtz-imaging.de).

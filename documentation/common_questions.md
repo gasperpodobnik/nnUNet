@@ -1,17 +1,17 @@
 # FAQ
 
 - [FAQ](#faq)
-  - [Where can I find the segmentation metrics of my experiments?](#where-can-i-find-the-segmentation-metrics-of-my-experiments-)
-  - [What postprocessing is selected?](#what-postprocessing-is-selected-)
+  - [Where can I find the segmentation metrics of my experiments?](#where-can-i-find-the-segmentation-metrics-of-my-experiments)
+  - [What postprocessing is selected?](#what-postprocessing-is-selected)
   - [Evaluating test set results](#evaluating-test-set-results)
   - [Creating and managing data splits](#creating-and-managing-data-splits)
-  - [How can I swap component XXX (for example the loss) of nnU-Net?](#how-can-i-swap-component-xxx--for-example-the-loss--of-nnu-net-)
-  - [How does nnU-Net handle multi-modal images?](#how-does-nnu-net-handle-multi-modal-images-)
-  - [Why does nnU-Net not use all my GPU memory?](#why-does-nnu-net-not-use-all-my-gpu-memory-)
-  - [Do I need to always run all U-Net configurations?](#do-i-need-to-always-run-all-u-net-configurations-)
+  - [How can I swap component XXX (for example the loss) of nnU-Net?](#how-can-i-swap-component-xxx-for-example-the-loss-of-nnu-net)
+  - [How does nnU-Net handle multi-modal images?](#how-does-nnu-net-handle-multi-modal-images)
+  - [Why does nnU-Net not use all my GPU memory?](#why-does-nnu-net-not-use-all-my-gpu-memory)
+  - [Do I need to always run all U-Net configurations?](#do-i-need-to-always-run-all-u-net-configurations)
   - [Sharing Models](#sharing-models)
-  - [Can I run nnU-Net on smaller GPUs?](#can-i-run-nnu-net-on-smaller-gpus-)
-  - [Why is no 3d_lowres model created?](#why-is-no-3d-lowres-model-created-)
+  - [Can I run nnU-Net on smaller GPUs?](#can-i-run-nnu-net-on-smaller-gpus)
+  - [Why is no 3d_lowres model created?](#why-is-no-3d_lowres-model-created)
 
 ## Where can I find the segmentation metrics of my experiments?
 

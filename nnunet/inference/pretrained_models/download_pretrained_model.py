@@ -17,7 +17,8 @@ import zipfile
 from time import time
 
 import requests
-from batchgenerators.utilities.file_and_folder_operations import join, isfile
+from batchgenerators.utilities.file_and_folder_operations import join, isfile, isdir
+from tqdm import tqdm
 
 from nnunet.paths import network_training_output_dir
 
@@ -232,7 +233,20 @@ def print_available_pretrained_models():
     for m in av_models.keys():
         print("")
         print(m)
-        print(av_models[m]["description"])
+        print(av_models[m]['description'])
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--export', help="Specify the folder name for saving the json file.", required=False)
+    args = parser.parse_args()
+    json_output_dir = args.export
+    if json_output_dir:
+        import json
+        if isdir(json_output_dir):
+            with open(args.export + '/available_models.json', 'w', encoding='utf8') as json_file:
+                json.dump(av_models, json_file, indent=1)
+            print("Data successfully exported to", join(json_output_dir, 'available_models.json'))
+        else:
+            print("Please specify a folder path.")
 
 
 def download_and_install_pretrained_model_by_name(taskname):
@@ -287,14 +301,19 @@ def download_and_install_from_url(url):
             os.remove(tempfile)
 
 
-def download_file(
-    url: str, local_filename: str, chunk_size: Optional[int] = None
-) -> str:
+def download_file(url: str, local_filename: str, chunk_size: Optional[int] = 8192 * 16) -> str:
     # borrowed from https://stackoverflow.com/questions/16694907/download-large-file-in-python-with-requests
     # NOTE the stream=True parameter below
-    with requests.get(url, stream=True) as r:
+    # OpenRefactory Warning: The 'requests.get' method does not use any 'timeout' threshold which may cause program to hang indefinitely.
+    with requests.get(url, stream=True, timeout=100) as r:
         r.raise_for_status()
-        with open(local_filename, "wb") as f:
+        # with open(local_filename, 'wb') as f:
+        #     for chunk in r.iter_content(chunk_size=chunk_size):
+        #         # If you have chunk encoded response uncomment if
+        #         # and set chunk_size parameter to None.
+        #         #if chunk:
+        #         f.write(chunk)
+        with tqdm.wrapattr(open(local_filename, 'wb'), "write", total=int(r.headers.get("Content-Length"))) as f:
             for chunk in r.iter_content(chunk_size=chunk_size):
                 # If you have chunk encoded response uncomment if
                 # and set chunk_size parameter to None.
