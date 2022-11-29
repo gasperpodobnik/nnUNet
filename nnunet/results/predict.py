@@ -329,7 +329,7 @@ def main():
     if 'train' in args['phases_to_predict']:
         images_source_dirs.append({'phase': 'train', 'img_dir': join(raw_data_dir, "imagesTr"), 'gt_dir': join(raw_data_dir, "labelsTr")})
 
-    config_str = f"FOLD-{args['fold']}_TRAINER-{args['trainer_class_name']}_PLANS-{args['plans_name']}_CHK-{args['checkpoint_name']}_DATASET-{args['dataset_task_number']}_TTA-{not args['disable_tta']}_STEP-{args['step_size']}"
+    config_str = f"FOLD-{args['fold']}-{args['trainer_class_name']}-{args['plans_name']}_CHK-{args['checkpoint_name']}-{args['dataset_task_number']}_TTA-{not args['disable_tta']}_STEP-{args['step_size']}"
     logging.info(f"settings info: {config_str}")
     if args["out_dir"] is None:
         args["out_dir"] = join(base_nnunet_dir_on_medical, model_task_name, "results")
@@ -534,6 +534,7 @@ def main():
             "plans_name": args["plans_name"],
             "checkpoint": args["checkpoint_name"],
             "prediction_mode": args["mode"],
+            "TTA": not args['disable_tta'],
         }
         dfs = []
 
