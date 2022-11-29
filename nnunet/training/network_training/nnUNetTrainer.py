@@ -942,16 +942,7 @@ class nnUNetTrainer(NetworkTrainer):
                     attempts += 1
                     sleep(1)
             if not success:
-<<<<<<< HEAD
-                print(
-                    "Could not copy gt nifti file %s into folder %s"
-                    % (f, gt_nifti_folder)
-                )
-                if e is not None:
-                    raise e
-=======
                 raise OSError(f"Something went wrong while copying nifti files to {gt_nifti_folder}. See above for the trace.")
->>>>>>> aa53b3b87130ad78f0a28e6169a83215d708d659
 
         self.network.train(current_mode)
 
