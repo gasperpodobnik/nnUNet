@@ -76,13 +76,13 @@ def main():
         "--checkpoint_name",
         type=str,
         default="model_final_checkpoint",  # this means that 'model_final_checkpoint.model.pkl' is used for inference
-        help="nnU-Net model to use: default is final model, but in case inference is done before model training is complete you may want to specifify 'model_best.model.pkl' or sth else",
+        help="nnU-Net model to use: default is final model, but in case inference is done before model training is complete you may want to specifify 'model_best' or 'model_latest'",
     )
     parser.add_argument(
         "--phases_to_predict", 
         nargs="+",
         type=str,
-        default=['test', 'train'],
+        default=['test', 'val', 'train'],
         help="which phases to predict",
     )
     parser.add_argument(
@@ -101,11 +101,17 @@ def main():
     parser.add_argument(
         "--num_threads_nifti_save",
         type=int,
-        default=4,
+        default=1,
         help="nnUNet_predict parameter",
     )
     parser.add_argument(
         "--mode", type=str, default="normal", help="nnUNet_predict parameter",
+    )
+    parser.add_argument(
+        "--csv_name", type=str, default="results", help="",
+    )
+    parser.add_argument(
+        "--mask_modality", type=str, default=None, help="options: CT, MR,... modality",
     )
     parser.add_argument(
         "--disable_tta", 
@@ -161,7 +167,7 @@ def main():
         nnUNet_trained_models_dir, "nnUNet", args["configuration"]
     )
     base_nnunet_dir_on_medical = "/media/medical/projects/head_and_neck/nnUnet"
-    csv_name = "results"
+    csv_name = args["csv_name"]
 
     ## checkers for input parameters
     # input task
@@ -245,6 +251,7 @@ def main():
             args["fold"] = get_fold_num(available_folds[0])
     if args["fold"] != "all":
         # if args['fold'] is 0/1/2/3/4, convert it to 'fold_X' else keep 'all'
+        args['fold'] = int(args['fold'])
         args["fold_str"] = f"fold_{args['fold']}"
     else:
         args["fold_str"] = args["fold"]
@@ -270,6 +277,7 @@ def main():
     four_digit_ids = {
         m: str.zfill(str(int(i)), 4) for i, m in model_dataset_json_dict["modality"].items()
     }
+    MODALITY_to_mask=int(four_digit_ids[args.get('mask_modality')]) if args.get('mask_modality') else args.get('mask_modality')
 
     # get image paths with modality four digit id
     raw_data_dir = join(nnUNet_raw_data_base_dir, "nnUNet_raw_data", dataset_task_name)
@@ -305,7 +313,7 @@ def main():
             [Path(i).name[: -len(".nii.gz")] for i in model_dataset_json_dict["test"]],
             dir_name="Ts",
         )
-    if 'train' in args['phases_to_predict']:
+    if 'train' in args['phases_to_predict'] or 'val' in args['phases_to_predict']:
         if args["fold"] != "all" and (not inference_on_unseen_dataset):
             with open(
                 join(nnUNet_preprocessed_dir, model_task_name, "splits_final.pkl"), "rb"
@@ -328,11 +336,19 @@ def main():
 
     if 'train' in args['phases_to_predict']:
         images_source_dirs.append({'phase': 'train', 'img_dir': join(raw_data_dir, "imagesTr"), 'gt_dir': join(raw_data_dir, "labelsTr")})
+        
+    if 'val' in args['phases_to_predict']:
+        images_source_dirs.append({'phase': 'val', 'img_dir': join(raw_data_dir, "imagesTr"), 'gt_dir': join(raw_data_dir, "labelsTr")})
 
-    config_str = f"FOLD-{args['fold']}-{args['trainer_class_name']}-{args['plans_name']}_CHK-{args['checkpoint_name']}-{args['dataset_task_number']}_TTA-{not args['disable_tta']}_STEP-{args['step_size']}"
+    # config_str = f"FOLD-{args['fold']}-{args['trainer_class_name']}-{args['plans_name']}_CHK-{args['checkpoint_name']}-{args['dataset_task_number']}_TTA-{not args['disable_tta']}_STEP-{args['step_size']}"
+    config_str = f"{args['dataset_task_number']}-FOLD-{args['fold']}-{args['trainer_class_name']}-{args['plans_name']}_CHK-{args['checkpoint_name']}"
+    if args.get('mask_modality'):
+        config_str+=f"_masked-{args.get('mask_modality')}"
     logging.info(f"settings info: {config_str}")
     if args["out_dir"] is None:
         args["out_dir"] = join(base_nnunet_dir_on_medical, model_task_name, "results")
+    elif not args["out_dir"].startswith('/'):
+        args["out_dir"] = join(base_nnunet_dir_on_medical, model_task_name, "results", args["out_dir"])
     os.makedirs(args["out_dir"], exist_ok=True)
 
     # prepare temporary dir for predicted segmentations
@@ -352,13 +368,14 @@ def main():
             os.makedirs(out_dirs["test"], exist_ok=True)
         if 'train' in args['phases_to_predict']:
             out_dirs["train"] = join(pred_seg_out_dir, "train")
-            out_dirs["val"] = join(pred_seg_out_dir, "val")
             os.makedirs(out_dirs["train"], exist_ok=True)
-            if "val" in splits_final_dict.keys():
-                os.makedirs(out_dirs["val"], exist_ok=True)
+            
+        if 'val' in args['phases_to_predict']:
+            assert "val" in splits_final_dict.keys(), 'there are no images in the validation set (if fold options is `all`, set --phases_to_predict to just `test` `train`)'
+            out_dirs["val"] = join(pred_seg_out_dir, "val")
+            os.makedirs(out_dirs["val"], exist_ok=True)
 
-
-    
+    inverse_splits_final_dict  = {cid: phase for phase, cases_dict in splits_final_dict.items() for cid, _ in cases_dict.items()}
 
     model_folder_name = join(
                 nnUNet_configuration_dir,
@@ -383,9 +400,12 @@ def main():
                 case_ids = check_input_folder_and_return_caseIDs(
                     img_dir, expected_num_modalities
                 )
-                # case_ids = case_ids[:28]
-                output_files = [join(out_dirs[phase], i + ".nii.gz") for i in case_ids]
-                gt_files = [join(_dict_tmp['gt_dir'], i + ".nii.gz") for i in case_ids]
+                case_ids = [cid for cid in case_ids if inverse_splits_final_dict[cid] == phase]
+                
+                print(f'\n\nFound {len(case_ids)} cases in phase {phase}\n\n')
+                
+                output_files = [join(out_dirs[phase], cid + ".nii.gz") for cid in case_ids]
+                gt_files = [join(_dict_tmp['gt_dir'], cid + ".nii.gz") for cid in case_ids]
                 all_files = subfiles(img_dir, suffix=".nii.gz", join=False, sort=True)
                 list_of_lists = [
                     [
@@ -418,6 +438,7 @@ def main():
                                 step_size=step_size,
                                 checkpoint_name=args["checkpoint_name"],
                                 segmentation_export_kwargs=None,
+                                MODALITY_to_mask=MODALITY_to_mask
                             )
                         else:
                             logging.info('Skipping inference, because output file exists')
@@ -535,6 +556,7 @@ def main():
             "checkpoint": args["checkpoint_name"],
             "prediction_mode": args["mode"],
             "TTA": not args['disable_tta'],
+            "masked_modality": args.get('mask_modality')
         }
         dfs = []
 
