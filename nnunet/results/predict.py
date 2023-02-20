@@ -428,10 +428,12 @@ class Custom_nnUNet_Predict(object):
             from utilities import utilities
             dfs = pd.concat(dfs, ignore_index=True)
             dfs = utilities.get_preserved_volume_ratio_info(dfs, dataset_dir=join(self.base_nnunet_dir_on_medical, self.model_task_name))
-            dfs = [dfs]
             logging.info(f"Successfully appended `preserved_volume_ratio` to metrics dataframe.")
         except Exception as e:
             logging.error(f"Failed to append `preserved_volume_ratio` to metrics dataframe due to the following error: {e}")
+        finally:
+            dfs = [dfs]
+            
 
         try:
             csv_path = join(self.out_dir, f"{self.csv_name}.csv")
