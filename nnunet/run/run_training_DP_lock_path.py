@@ -35,8 +35,8 @@ def main():
                         action="store_true")
     parser.add_argument("-c", "--continue_training", help="use this if you want to continue a training",
                         action="store_true")
-    parser.add_argument("--add_suffix_to_trainer", help="use this if you want to add a string to trainer", type=str)
-    parser.add_argument("--max_epochs", help="use this if you want to disable gradients of one modality", type=int, default=None)
+    parser.add_argument("--modality_to_freeze", help="use this if you want to disable gradients of one modality", type=str)
+    parser.add_argument("--max_epochs", help="use this if you want to disable gradients of one modality", type=int, default=200)
     parser.add_argument("-p", help="plans identifier. Only change this if you created a custom experiment planner",
                         default=default_plans_identifier, required=False)
     parser.add_argument("--use_compressed_data", default=False, action="store_true",
@@ -89,7 +89,7 @@ def main():
     #                          "Hands off")
     # parser.add_argument("--force_separate_z", required=False, default="None", type=str,
     #                     help="force_separate_z resampling. Can be None, True or False. Testing purpose only. Hands off")
-    parser.add_argument('-pretrained_weights', type=str, required=False, default=None,
+    parser.add_argument('--pretrained_weights', type=str, required=False, default=None,
                         help='path to nnU-Net checkpoint file to be used as pretrained model (use .model '
                              'file, for example model_final_checkpoint.model). Will only be used when actually training. '
                              'Optional. Beta. Use with caution.')
@@ -162,17 +162,19 @@ def main():
 
     trainer.initialize(not validation_only)
     
+    modalities = {m: i for i, m in trainer.plans['modalities'].items()}
+    idx_of_path_to_freeze = modalities[args.modality_to_freeze]
+    
     old_experiment_name = trainer.experiment_name
-    if args.add_suffix_to_trainer is not None:
-        trainer.experiment_name += f'_{args.add_suffix_to_trainer.replace("-", "_")}'
+    trainer.experiment_name += f'_freeze{args.modality_to_freeze}'
     new_output_folder_base = trainer.output_folder_base.replace(old_experiment_name, trainer.experiment_name)
     new_output_folder = join(new_output_folder_base, Path(trainer.output_folder).name)
     os.makedirs(new_output_folder, exist_ok=True)
     trainer.log_file = trainer.log_file.replace(old_experiment_name, trainer.experiment_name)
     
-    trainer.print_to_log_file('new experiment name', trainer.experiment_name)
-    trainer.print_to_log_file('new_output_folder_base', new_output_folder_base)
-    trainer.print_to_log_file('new_output_folder', new_output_folder)
+    
+    
+    
 
     if find_lr:
         trainer.find_lr()
@@ -181,23 +183,25 @@ def main():
             if args.continue_training:
                 # -c was set, continue a previous training and ignore pretrained weights
                 trainer.load_latest_checkpoint()
+                trainer.max_num_epochs = trainer.max_num_epochs + args.max_epochs
+    
             elif (not args.continue_training) and (args.pretrained_weights is not None):
                 # we start a new training. If pretrained_weights are set, use them
                 load_pretrained_weights(trainer.network, args.pretrained_weights)
+                trainer.max_num_epochs = args.max_epochs
             else:
                 # new training without pretraine weights, do nothing
                 pass
             
-            if args.max_epochs is not None:
-                trainer.max_num_epochs = args.max_epochs
-                trainer.print_to_log_file('New epoch limit: ' + str(trainer.max_num_epochs) + ', current epoch: ' + str(trainer.epoch))
-
             to_log = {}
             for name, param in trainer.network.named_parameters():
+                if f'.blocks{idx_of_path_to_freeze+1}.' in name:
+                    param.requires_grad = False
                 to_log[name] = param.requires_grad
             for n, g in dict(sorted(to_log.items())).items():
-                trainer.print_to_log_file(n, g)
-                
+                trainer.print_to_log_file(n, '\t', g)
+            
+            # trainer.epoch = 0
             trainer.output_folder_base = new_output_folder_base
             trainer.output_folder = new_output_folder
             trainer.run_training()

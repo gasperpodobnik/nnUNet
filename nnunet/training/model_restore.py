@@ -32,6 +32,7 @@ def recursive_find_python_class(folder, trainer_name, current_module):
 
     if tr is None:
         for importer, modname, ispkg in pkgutil.iter_modules(folder):
+            print(modname, ispkg)
             if ispkg:
                 next_current_module = current_module + "." + modname
                 tr = recursive_find_python_class([join(folder[0], modname)], trainer_name, current_module=next_current_module)

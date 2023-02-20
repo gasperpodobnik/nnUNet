@@ -6,6 +6,7 @@ import os
 import pickle
 import shutil
 import sys
+import copy
 from os.path import isdir, join
 from pathlib import Path
 from tqdm import tqdm
@@ -123,6 +124,9 @@ class nnUNet_Prediction_Arg_Parser(object):
             "--mask_modality", type=str, default=None, help="options: CT, MR,... modality",
         )
         self.parser.add_argument(
+            "--MODALITY_idxs_to_keep", nargs="+", type=int, default=None, help="options: 0, 1,... N-1 modality",
+        )
+        self.parser.add_argument(
             "--disable_tta", 
             default=False,
             action="store_true",
@@ -145,6 +149,8 @@ class nnUNet_Prediction_Arg_Parser(object):
             required=False,
             help="can be None, False or True",
         )
+        
+
         
     def checkers(self):
         assert len(self.args['phases_to_predict']) > 0, 'there should be at least one phase'
@@ -187,7 +193,6 @@ class Custom_nnUNet_Predict(object):
         
         self.results_dir_name = "results"
         
-        self.all_in_gpu = args["all_in_gpu"]
         self.configuration = args["configuration"]
         self.task_number = args['task_number']
         
@@ -198,12 +203,14 @@ class Custom_nnUNet_Predict(object):
             self.dataset_task_number=args["dataset_task_number"]
             self.inference_on_unseen_dataset = True
 
+        self.all_in_gpu = args["all_in_gpu"]
         self.phases_to_predict = args['phases_to_predict']
         self.mode=args["mode"]
         self.gpus=args["gpus"]
         self.step_size = args["step_size"]
         self.do_tta=not args["disable_tta"]
         self.mask_modality = args.get('mask_modality')
+        self.MODALITY_idxs_to_keep = args.get('MODALITY_idxs_to_keep')
         
         self.num_threads_preprocessing=args["num_threads_preprocessing"]
         self.num_threads_nifti_save=args["num_threads_nifti_save"]
@@ -286,15 +293,30 @@ class Custom_nnUNet_Predict(object):
         if self.mask_modality:
             self.config_str += f"_masked-{self.mask_modality}"
             
+        
+        
+    def _setup_logging(self, log_dir, clear_log=True):
+        for handler in logging.root.handlers[:]:
+            logging.root.removeHandler(handler)
+        logging.basicConfig(
+            filename=join(log_dir, self.config_str + '.log'),
+            level=logging.INFO,
+            format="%(asctime)s %(name)-5s %(levelname)-8s %(message)s",
+            datefmt="%m-%d %H:%M",
+            filemode="w" if clear_log else "a",
+        )
         logging.info(f"Prediction configuration info: {self.config_str}")
         
-
-        
-    def get_model_epoch(self):
+    def load_model(self):
         from nnunet.training.model_restore import load_model_and_checkpoint_files
         trainer, all_params = load_model_and_checkpoint_files(
                 self.trainer_class_and_plans_dir, folds=[self.fold], mixed_precision=True, checkpoint_name=self.checkpoint_name
             )
+        return trainer, all_params
+        
+        
+    def get_model_epoch(self):
+        trainer, all_params = self.load_model()
         self.epoch = all_params[0]['epoch']
         del trainer
         del all_params
@@ -302,10 +324,12 @@ class Custom_nnUNet_Predict(object):
         
     def prepare_dirs_and_outputs(self):
         self.get_out_dir()
+        self._setup_logging(log_dir=self.out_dir, clear_log=True)
             
         # prepare directories in case predicted segmentations are to be saved
+        self.prepare_out_seg_dirs()
         if self.save_seg_masks:
-            self.prepare_out_seg_dirs()
+            self.make_out_seg_dirs()
             
         if self.old_prediciton_method:
             self.prepare_tmp_dir()
@@ -398,6 +422,16 @@ class Custom_nnUNet_Predict(object):
 
             if self.old_prediciton_method and self.save_seg_masks:
                 shutil.copy2(self.pred_fpath, join(self.out_dirs[self.phase], self.case['fname'] + ".nii.gz"))
+                
+        try:
+            sys.path.append(r"/media/medical/gasperp/projects")
+            from utilities import utilities
+            dfs = pd.concat(dfs, ignore_index=True)
+            dfs = utilities.get_preserved_volume_ratio_info(dfs, dataset_dir=join(self.base_nnunet_dir_on_medical, self.model_task_name))
+            dfs = [dfs]
+            logging.info(f"Successfully appended `preserved_volume_ratio` to metrics dataframe.")
+        except Exception as e:
+            logging.error(f"Failed to append `preserved_volume_ratio` to metrics dataframe due to the following error: {e}")
 
         try:
             csv_path = join(self.out_dir, f"{self.csv_name}.csv")
@@ -545,9 +579,9 @@ class Custom_nnUNet_Predict(object):
                 dir_name="Ts",
             )
         if 'train' in self.phases_to_predict or 'val' in self.phases_to_predict:
-            if self.fold == "all" and self.inference_on_unseen_dataset:
-                if "val" in self.phases_to_predict.keys():
-                    raise UserWarning('there are no images in the validation set (if fold options is `all`, set --phases_to_predict to just `test` `train`)')
+            if self.fold == "all" or self.inference_on_unseen_dataset:
+                if "val" in self.phases_to_predict:
+                    logging.warning('there are no images in the validation set (if fold options is `all`, `--phases_to_predict` can be just `test` and/or `train`)')
                 self.splits_final_dict["train"] = self.splits_iterator(
                     [
                         Path(_dict["image"]).name.replace(".nii.gz", '')
@@ -596,15 +630,16 @@ class Custom_nnUNet_Predict(object):
 
         if 'test' in self.splits_final_dict:
             self.out_dirs["test"] = join(pred_seg_out_dir, "test")
-            os.makedirs(self.out_dirs["test"], exist_ok=True)
             
         if 'train' in self.splits_final_dict:
             self.out_dirs["train"] = join(pred_seg_out_dir, "train")
-            os.makedirs(self.out_dirs["train"], exist_ok=True)
             
         if 'val' in self.splits_final_dict:
             self.out_dirs["val"] = join(pred_seg_out_dir, "val")
-            os.makedirs(self.out_dirs["val"], exist_ok=True)
+            
+    def make_out_seg_dirs(self):
+        for phase, dir_path in self.out_dirs.items():
+            os.makedirs(dir_path, exist_ok=True)
 
     
     
@@ -668,7 +703,8 @@ class Custom_nnUNet_Predict(object):
                     step_size=self.step_size,
                     checkpoint_name=self.checkpoint_name,
                     segmentation_export_kwargs=self.segmentation_export_kwargs,
-                    MODALITY_to_mask=self.MODALITY_to_mask
+                    MODALITY_to_mask=self.MODALITY_to_mask,
+                    MODALITY_idxs_to_keep=self.MODALITY_idxs_to_keep
                 )
             else:
                 logging.info('Skipping inference, because output file exists')
@@ -696,6 +732,10 @@ class Custom_nnUNet_Predict(object):
             
     def predict_patch(self, d, dct):
         from nnunet.inference.predict import save_segmentation_nifti_from_softmax
+        
+        d = np.copy(d)
+        dct = copy.deepcopy(dct)
+        
         if self.MODALITY_to_mask is not None:
             d[self.MODALITY_to_mask] = 0
             print(f'MASKING modality with index {self.MODALITY_to_mask}')
@@ -851,6 +891,9 @@ class Custom_nnUNet_Predict(object):
             shutil.rmtree(self.output_seg_dir)
             sys.exit()
 
-if __name__ == "__main__":
+def main():
     run = nnUNet_Prediction_Arg_Parser()
     run()
+
+if __name__ == "__main__":
+    main()

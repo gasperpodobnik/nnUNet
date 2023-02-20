@@ -326,7 +326,7 @@ class nnUNetTrainerV2(nnUNetTrainer):
         data_dict = next(data_generator)
         data = data_dict["data"]
         target = data_dict["target"]
-
+        
         data = maybe_to_torch(data)
         target = maybe_to_torch(target)
 
@@ -335,6 +335,14 @@ class nnUNetTrainerV2(nnUNetTrainer):
             target = to_cuda(target)
 
         self.optimizer.zero_grad()
+        
+        # import SimpleITK as sitk
+        # rnd_run_id = np.random.randint(1000)
+        # for b in range(data.shape[0]):
+        #     for m in range(data.shape[1]):
+        #         sitk_img = sitk.GetImageFromArray(data[b, m].cpu().numpy())
+        #         sitk_img.SetSpacing(data_dict['properties'][b]['spacing_after_resampling'][::-1].tolist())
+        #         sitk.WriteImage(sitk_img, os.path.join('/media/medical/projects/head_and_neck/nnUnet/Task207_ONKOI-bothM-curatedFinal/training_examples' +  f'{rnd_run_id}_{b}_{m}.nii.gz'))
 
         if self.fp16:
             with autocast():
@@ -357,6 +365,10 @@ class nnUNetTrainerV2(nnUNetTrainer):
                 l.backward()
                 torch.nn.utils.clip_grad_norm_(self.network.parameters(), 12)
                 self.optimizer.step()
+                
+        
+        # import nnunet.results.fcn as fcn
+        # fcn.plot_grad_flow(self.network.named_parameters(), str(self.epoch) + '_' +str(rnd_run_id))
 
         if run_online_evaluation:
             self.run_online_evaluation(output, target)

@@ -18,7 +18,7 @@ class nnUNet_Registration_Arg_Parser(predict.nnUNet_Prediction_Arg_Parser):
     def __init__(self) -> None:
         super().__init__()
         self.parser.add_argument(
-            "--organ_of_interest", 
+            "--organs_of_interest", 
             nargs="+",
             type=str,
             required=True,
@@ -49,7 +49,7 @@ class Patch_Registration_nnUNet_Predict(predict.Custom_nnUNet_Predict):
         super().__init__(args)
         self.rigid = True
         self.deformable = args['deformable']
-        self.organs_of_interest = args['organ_of_interest']
+        self.organs_of_interest = args['organs_of_interest']
         self.results_dir_name = "patch_registration_results"
         logging.info(f'Started `Patch_Registration_nnUNet_Predict`')
         
@@ -157,14 +157,19 @@ class Patch_Registration_nnUNet_Predict(predict.Custom_nnUNet_Predict):
         for preprocessed in self.preprocessing:
             output_filename, (d, dct) = preprocessed
             all_output_files.append(all_output_files)
+            logging.info(f"Registering case: {Path(output_filename).name}")
             if isinstance(d, str):
                 data = np.load(d)
                 os.remove(d)
                 d = data
             for self.organ_of_interest in self.organs_of_interest:
+                logging.info(f'Registering {self.organ_of_interest}')
                 self.organ_lbl_int = self.organs_labels_dict[self.organ_of_interest]
-                for enum, d, dct in self.register_patch(d, dct):
-                    self.predict_patch(d, dct)
+                try:
+                    for enum, _d, _dct in self.register_patch(d, dct):
+                        self.predict_patch(_d, _dct)
+                except Exception as e:
+                    logging.error(f"Failed due to the following error: {e}")
             
         print("inference done. Now waiting for the segmentation export to finish...")
         _ = [i.get() for i in self.results]
@@ -186,18 +191,19 @@ class Patch_Registration_nnUNet_Predict(predict.Custom_nnUNet_Predict):
         )
             
     def register_patch(self, d, dct):
+        final_patch_size = np.array([192, 192, 40])
+        rough_patch_size = final_patch_size + np.array([20, 20, 6])
+        
         d = np.copy(d)
         dct = copy.deepcopy(dct)
         
         organ_results_dir = join(self.out_dir, self.organ_of_interest)
         os.makedirs(organ_results_dir, exist_ok=True)
-        final_patch_size = np.array([192, 192, 40])
-        rough_patch_size = final_patch_size + np.array([20, 20, 6])
-
-        
         
         fname_id = Path(self.gt_filename).name.split('_')[-1].split('.')[0] # three digit number, e.g. `001`
         seg_sitk = sitk.ReadImage(self.gt_filename)
+        
+        assert (sitk.GetArrayFromImage(seg_sitk) == self.organ_lbl_int).sum() > 0, f'{self.organ_of_interest} is not in GT seg'
         
         default_pixel_value_ct = float(d[0].min())
         default_pixel_value_mr = float(d[1].min())
@@ -205,6 +211,7 @@ class Patch_Registration_nnUNet_Predict(predict.Custom_nnUNet_Predict):
         ct_sitk.CopyInformation(seg_sitk)
         mr_sitk = sitk.GetImageFromArray(d[1])
         mr_sitk.CopyInformation(seg_sitk)
+        
         
         # compute organ bbox
         label_shape_filter = sitk.LabelShapeStatisticsImageFilter()
@@ -218,11 +225,12 @@ class Patch_Registration_nnUNet_Predict(predict.Custom_nnUNet_Predict):
         # --------------------------------------------------------------------------------
         # extract small patch around bbox of the organ of interest and register it rigidly
         bbox_extension = (bbox_size/4).astype(int)
+        minimal_extension = (10/np.array(seg_sitk.GetSpacing())).astype(int)
+        bbox_extension[bbox_extension < minimal_extension] = minimal_extension[bbox_extension < minimal_extension]
         reg_patch_size = bbox_size + 2*bbox_extension
         reg_patch_start_idx = bbox_start_idx - bbox_extension
         
-        if np.any(reg_patch_size < 4):
-            return None
+        assert np.all(reg_patch_size >= 4), f'Patch around {self.organ_of_interest} is too smal'
         
         reg_resample_filter = sitk.ResampleImageFilter()
         reg_resample_filter.SetReferenceImage(seg_sitk)

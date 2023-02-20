@@ -363,7 +363,10 @@ class ExperimentPlanner(object):
 
         for i in range(num_modalities):
             if modalities[i] == "CT" or modalities[i] == 'ct':
-                schemes[i] = "CT"
+                if 'Task107_CTAV' in self.preprocessed_output_folder:
+                    schemes[i] = 'CT_window'
+                else:
+                    schemes[i] = "CT"
             elif modalities[i] == 'noNorm':
                 schemes[i] = "noNorm"
             else:

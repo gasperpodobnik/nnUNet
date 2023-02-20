@@ -174,6 +174,8 @@ def predict_cases(
     checkpoint_name="model_final_checkpoint",
     segmentation_export_kwargs: dict = None,
     disable_postprocessing: bool = False,
+    MODALITY_to_mask=None,
+    MODALITY_idxs_to_keep=None
 ):
     """
     :param segmentation_export_kwargs:
@@ -272,6 +274,13 @@ def predict_cases(
             data = np.load(d)
             os.remove(d)
             d = data
+            
+        if MODALITY_to_mask is not None:
+            d[MODALITY_to_mask] = 0
+            print(f'MASKING modality with index {MODALITY_to_mask}')
+        if MODALITY_idxs_to_keep is not None:
+            d = d[[MODALITY_idxs_to_keep]]
+            
 
         print("predicting", output_filename)
         trainer.load_checkpoint_ram(params[0], False)
@@ -391,7 +400,7 @@ def predict_cases(
 
     pool.close()
     pool.join()
-
+    
 
 def predict_cases_fast(
     model,

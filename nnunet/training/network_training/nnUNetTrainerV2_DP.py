@@ -13,6 +13,7 @@
 #    limitations under the License.
 
 
+from pathlib import Path
 import numpy as np
 import torch
 from batchgenerators.utilities.file_and_folder_operations import *
@@ -258,6 +259,14 @@ class nnUNetTrainerV2_DP(nnUNetTrainerV2):
             target = to_cuda(target)
 
         self.optimizer.zero_grad()
+        
+        # import SimpleITK as sitk
+        # rnd_run_id = np.random.randint(1000)
+        # for b in range(data.shape[0]):
+        #     for m in range(data.shape[1]):
+        #         sitk_img = sitk.GetImageFromArray(data[b, m].cpu().numpy())
+        #         sitk_img.SetSpacing(data_dict['properties'][b]['spacing_after_resampling'][::-1].tolist())
+        #         sitk.WriteImage(sitk_img, os.path.join('/media/medical/projects/head_and_neck/nnUnet/Task107_CTAV/training_examples' +  f'{rnd_run_id}_{b}_{m}.nii.gz'))
 
         if self.fp16:
             with autocast():
@@ -293,6 +302,8 @@ class nnUNetTrainerV2_DP(nnUNetTrainerV2):
                 torch.nn.utils.clip_grad_norm_(self.network.parameters(), 12)
                 self.optimizer.step()
 
+        # import nnunet.results.fcn as fcn
+        # fcn.plot_grad_flow(self.network.named_parameters(), str(self.epoch) + '_' +str(rnd_run_id))
         return l.detach().cpu().numpy()
 
     def run_online_evaluation(self, tp_hard, fp_hard, fn_hard):
@@ -328,6 +339,12 @@ class nnUNetTrainerV2_DP(nnUNetTrainerV2):
 
             nominator = 2 * tp + self.dice_smooth
             denominator = 2 * tp + fp + fn + self.dice_smooth
+            
+            try:
+                if self.organ_weights_list is not None:
+                    nominator = nominator*self.organ_weights_list[int(not self.dice_do_BG):]
+            except:
+                pass
 
             dice_loss = (-nominator / denominator).mean()
             if loss is None:

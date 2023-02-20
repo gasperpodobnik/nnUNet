@@ -293,6 +293,15 @@ class GenericPreprocessor(object):
                 data[c] = (data[c] - mn) / sd
                 if use_nonzero_mask[c]:
                     data[c][seg[-1] < 0] = 0
+            elif scheme == "CT_window":
+                print("WARNING: Using CT_window normalization scheme")
+                lower_bound = -200
+                upper_bound = 1000
+                data[c] = np.clip(data[c], lower_bound, upper_bound)
+                data[c] = (data[c] - lower_bound) / (upper_bound-lower_bound)
+                data[c] = data[c]*2.0-1.0
+                if use_nonzero_mask[c]:
+                    data[c][seg[-1] < 0] = 0
             elif scheme == 'noNorm':
                 pass
             else:
