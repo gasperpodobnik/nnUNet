@@ -577,7 +577,7 @@ class Custom_nnUNet_Predict(object):
         self.splits_final_dict = {}
         if 'test' in self.phases_to_predict:
             self.splits_final_dict["test"] = self.splits_iterator(
-                [Path(i).name[: -len(".nii.gz")] for i in self.model_dataset_json_dict["test"]],
+                [Path(i).name[: -len(".nii.gz")] for i in self.dataset_dataset_json_dict["test"]],
                 dir_name="Ts",
             )
         if 'train' in self.phases_to_predict or 'val' in self.phases_to_predict:
@@ -587,7 +587,7 @@ class Custom_nnUNet_Predict(object):
                 self.splits_final_dict["train"] = self.splits_iterator(
                     [
                         Path(_dict["image"]).name.replace(".nii.gz", '')
-                        for _dict in self.model_dataset_json_dict["training"]
+                        for _dict in self.dataset_dataset_json_dict["training"]
                     ]
                 )
             else:

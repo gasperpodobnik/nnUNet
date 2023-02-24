@@ -79,31 +79,51 @@ class nnUNet_Activation_Plotter(predict.Custom_nnUNet_Predict):
         self.ct_img = sitk.GetArrayFromImage(sitk.ReadImage(args['ct_patch']))
         self.mr_img = sitk.GetArrayFromImage(sitk.ReadImage(args['mr_patch']))
         
-        self.hook_points = [
-            ['conv_blocks_context', 0, 'blocks1', 0, 'conv'], 
-            ['conv_blocks_context', 0, 'blocks2', 0, 'conv'], 
-            ['conv_blocks_context', 0, 'blocks1', 1, 'conv'], 
-            ['conv_blocks_context', 0, 'blocks2', 1, 'conv'], 
-            # ['conv_blocks_context', 1, 'blocks1', 0, 'conv'],
-            # ['conv_blocks_context', 1, 'blocks2', 0, 'conv'],
-            # ['conv_blocks_context', 1, 'blocks1', 1, 'conv'],
-            # ['conv_blocks_context', 1, 'blocks2', 1, 'conv'],
-            ['conv_blocks_context', 1, 'blocks1', 1, 'lrelu'],
-            ['conv_blocks_context', 1, 'blocks2', 1, 'lrelu'],
-            ['conv_blocks_context', 2, 'blocks', 0, 'conv'],
-            ['conv_blocks_context', 2, 'blocks', 0, 'lrelu'],
-            ['conv_blocks_context', 2, 'blocks', 1, 'lrelu'],
-            ['conv_blocks_context', 3, 'blocks', 0, 'lrelu'],
-            ['conv_blocks_context', 3, 'blocks', 1, 'lrelu'],
-            ['conv_blocks_localization', 2, 1, 'blocks', 0, 'lrelu'],
-            ['conv_blocks_localization', 3, 0, 'blocks', 0, 'conv'],
-            ['conv_blocks_localization', 3, 1, 'blocks', 0, 'lrelu'],
-            # ['tu', 0],
-            ['tu', 1],
-            ['tu', 2],
-            ['tu', 3],
-            ['tu', 4]
-        ]
+        if 'separate_encoders' in args['trainer_class_name']:
+            self.hook_points = [
+                ['conv_blocks_context', 0, 0, 'blocks', 1, 'conv'], 
+                ['conv_blocks_context', 1, 0, 'blocks', 1, 'conv'], 
+                ['conv_blocks_context', 0, 1, 'blocks', 1, 'lrelu'],
+                ['conv_blocks_context', 1, 1, 'blocks', 1, 'lrelu'],
+                ['conv_blocks_context', 0, 2, 'blocks', 0, 'conv'],
+                ['conv_blocks_context', 1, 2, 'blocks', 0, 'conv'],
+                ['conv_blocks_context', 0, 2, 'blocks', 0, 'lrelu'],
+                ['conv_blocks_context', 1, 2, 'blocks', 0, 'lrelu'],
+                ['conv_blocks_localization', 2, 1, 'blocks', 0, 'lrelu'],
+                ['conv_blocks_localization', 3, 0, 'blocks', 0, 'conv'],
+                ['conv_blocks_localization', 3, 1, 'blocks', 0, 'lrelu'],
+                # ['tu', 0],
+                ['tu', 1],
+                ['tu', 2],
+                ['tu', 3],
+                ['tu', 4]
+            ]
+        else:
+            self.hook_points = [
+                ['conv_blocks_context', 0, 'blocks1', 0, 'conv'], 
+                ['conv_blocks_context', 0, 'blocks2', 0, 'conv'], 
+                ['conv_blocks_context', 0, 'blocks1', 1, 'conv'], 
+                ['conv_blocks_context', 0, 'blocks2', 1, 'conv'], 
+                # ['conv_blocks_context', 1, 'blocks1', 0, 'conv'],
+                # ['conv_blocks_context', 1, 'blocks2', 0, 'conv'],
+                # ['conv_blocks_context', 1, 'blocks1', 1, 'conv'],
+                # ['conv_blocks_context', 1, 'blocks2', 1, 'conv'],
+                ['conv_blocks_context', 1, 'blocks1', 1, 'lrelu'],
+                ['conv_blocks_context', 1, 'blocks2', 1, 'lrelu'],
+                ['conv_blocks_context', 2, 'blocks', 0, 'conv'],
+                ['conv_blocks_context', 2, 'blocks', 0, 'lrelu'],
+                ['conv_blocks_context', 2, 'blocks', 1, 'lrelu'],
+                ['conv_blocks_context', 3, 'blocks', 0, 'lrelu'],
+                ['conv_blocks_context', 3, 'blocks', 1, 'lrelu'],
+                ['conv_blocks_localization', 2, 1, 'blocks', 0, 'lrelu'],
+                ['conv_blocks_localization', 3, 0, 'blocks', 0, 'conv'],
+                ['conv_blocks_localization', 3, 1, 'blocks', 0, 'lrelu'],
+                # ['tu', 0],
+                ['tu', 1],
+                ['tu', 2],
+                ['tu', 3],
+                ['tu', 4]
+            ]
         
     def generate_input_patches(self):
         self.options = [

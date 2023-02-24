@@ -236,6 +236,14 @@ def predict_cases(
     trainer, params = load_model_and_checkpoint_files(
         model, folds, mixed_precision=mixed_precision, checkpoint_name=checkpoint_name
     )
+    # trainer.plans['num_modalities']=3
+    # trainer.plans['modalities']={0: 'CT', 1: 'MR_T1', 2: 'MR_T2'}
+    # from collections import OrderedDict
+    # trainer.plans['normalization_schemes']=OrderedDict([(0, 'CT'), (1, 'nonCT'), (2, 'nonCT')])
+    # trainer.normalization_schemes=OrderedDict([(0, 'CT'), (1, 'nonCT'), (2, 'nonCT')])
+    # trainer.plans['use_mask_for_norm']=OrderedDict([(0, False), (1, False), (2, False)])
+    # trainer.use_mask_for_norm=OrderedDict([(0, False), (1, False), (2, False)])
+    
 
     if segmentation_export_kwargs is None:
         if "segmentation_export_params" in trainer.plans.keys():
