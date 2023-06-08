@@ -368,6 +368,9 @@ def predict_cases(
             )
             np.save(output_filename[:-7] + ".npy", softmax)
             softmax = output_filename[:-7] + ".npy"
+        # save_segmentation_nifti_from_softmax(softmax, output_filename, dct, interpolation_order, region_class_order,
+        #                                     None, None,
+        #                                     npz_file, None, force_separate_z, interpolation_order_z)
 
         results.append(
             pool.starmap_async(
