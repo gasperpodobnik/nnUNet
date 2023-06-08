@@ -75,6 +75,37 @@ class ConvDropoutNonlinNorm(ConvDropoutNormNonlin):
             x = self.dropout(x)
         return self.instnorm(self.lrelu(x))
 
+class SSMA_block(nn.Module):
+    def __init__(self, num_modalities, num_input_feature_channels):
+        super(SSMA_block, self).__init__()
+        self.num_modalities = num_modalities
+        self.num_input_feature_channels = num_input_feature_channels
+        
+        # self.num_output_feature_channels = min(self.num_input_feature_channels//4, 24)
+        # conv_kwargs = dict(kernel_size=(1,1,1), dilation=1, bias=True)
+        # each_modality_preproc = [
+        #     nn.Conv3d(self.num_input_feature_channels, self.num_output_feature_channels, **conv_kwargs),
+        #     nn.ReLU(True),
+        # ]
+        # entry convolution for each modality
+        # self.entry_convs = nn.ModuleList([nn.Sequential(*list(each_modality_preproc)) for _ in range(self.num_modalities)])
+        
+        conv_kwargs = dict(kernel_size=(3,3,3), padding=(1,1,1), stride=(1,1,1), dilation=1, bias=True)
+        self.num_reduced = max(self.num_input_feature_channels//6, 8)
+        self.SSMA = nn.Sequential(
+            nn.Conv3d(self.num_input_feature_channels*self.num_modalities, self.num_reduced, **conv_kwargs),
+            nn.ReLU(True),
+            nn.Conv3d(self.num_reduced, self.num_input_feature_channels*self.num_modalities, **conv_kwargs),
+            nn.Sigmoid(),
+        )
+        
+    def forward(self, *x):
+        # for i in range(self.num_modalities):
+            # x[i] = self.entry_convs[i](x[i])
+        x = torch.cat(x, dim=1)
+        attention = self.SSMA(x)
+        return torch.mul(x, attention)
+
 
 class StackedConvLayers(nn.Module):
     def __init__(self, input_feature_channels, output_feature_channels, num_convs,
@@ -164,7 +195,7 @@ class Upsample(nn.Module):
                                          align_corners=self.align_corners)
 
 
-class Generic_UNet_separate_encoders(SegmentationNetwork):
+class Generic_UNet_separate_encoders_SSMA(SegmentationNetwork):
     DEFAULT_BATCH_SIZE_3D = 2
     DEFAULT_PATCH_SIZE_3D = (64, 192, 160)
     SPACING_FACTOR_BETWEEN_STAGES = 2
@@ -200,7 +231,7 @@ class Generic_UNet_separate_encoders(SegmentationNetwork):
 
         Questions? -> f.isensee@dkfz.de
         """
-        super(Generic_UNet_separate_encoders, self).__init__()
+        super(Generic_UNet_separate_encoders_SSMA, self).__init__()
         self.convolutional_upsampling = convolutional_upsampling
         self.convolutional_pooling = convolutional_pooling
         self.upscale_logits = upscale_logits
@@ -264,6 +295,7 @@ class Generic_UNet_separate_encoders(SegmentationNetwork):
 
         self.modality_num = input_channels
         self.max_num_features = self.max_num_features // self.modality_num
+        self.SSMA_fusion_blocks = []
         self.conv_blocks_context = []
         self.td = []
         for i in range(self.modality_num):
@@ -294,12 +326,14 @@ class Generic_UNet_separate_encoders(SegmentationNetwork):
                                                                 first_stride, basic_block=basic_block))
                 if not self.convolutional_pooling:
                     self.td[i_encoder].append(pool_op(pool_op_kernel_sizes[d]))
+            self.SSMA_fusion_blocks.append(SSMA_block(num_modalities=self.modality_num, num_input_feature_channels=output_features))
             input_features = output_features
             output_features = int(np.round(output_features * feat_map_mul_on_downscale))
 
             output_features = min(output_features, self.max_num_features)
 
         # now the bottleneck.
+        self.SSMA_fusion_blocks.append(SSMA_block(num_modalities=self.modality_num, num_input_feature_channels=output_features))
         # determine the first stride
         if self.convolutional_pooling:
             first_stride = pool_op_kernel_sizes[-1]
@@ -381,6 +415,7 @@ class Generic_UNet_separate_encoders(SegmentationNetwork):
         # register all modules properly
         self.conv_blocks_localization = nn.ModuleList(self.conv_blocks_localization)
         self.conv_blocks_context = nn.ModuleList([nn.ModuleList(i) for i in self.conv_blocks_context])
+        self.SSMA_fusion_blocks = nn.ModuleList(self.SSMA_fusion_blocks)
         self.td = nn.ModuleList([nn.ModuleList(i) for i in self.td])
         self.tu = nn.ModuleList(self.tu)
         self.seg_outputs = nn.ModuleList(self.seg_outputs)
@@ -400,16 +435,13 @@ class Generic_UNet_separate_encoders(SegmentationNetwork):
         for d in range(len(self.conv_blocks_context[0])):
             for channel in range(self.modality_num):
                 x[channel] = self.conv_blocks_context[channel][d](x[channel])
-            skips.append(torch.cat(x, dim=1))
+            skips.append(self.SSMA_fusion_blocks[d](*x))
             if not self.convolutional_pooling:
                 for channel in range(self.modality_num):
                     x[channel] = self.td[channel][d](x[channel])
 
-        x = torch.cat(x, dim=1)
+        x = self.SSMA_fusion_blocks[-1](*x)
         x = self.bottleneck(x)
-        # a = torch.mean(torch.pow(x, 2), dim=1, keepdim=True)
-        # from nnunet.training.loss_functions.DistillKL import DistillKL
-        # DistillKL()(a, a*2)
         
 
         for u in range(len(self.tu)):

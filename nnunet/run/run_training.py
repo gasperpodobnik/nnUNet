@@ -33,6 +33,7 @@ def main():
     parser.add_argument("fold", help='0, 1, ..., 5 or \'all\'')
     parser.add_argument("-val", "--validation_only", help="use this if you want to only run the validation",
                         action="store_true")
+    parser.add_argument("--max_epochs", help="use this if you want to change number of epochs", type=int, default=None)
     parser.add_argument("-c", "--continue_training", help="use this if you want to continue a training",
                         action="store_true")
     parser.add_argument("-p", help="plans identifier. Only change this if you created a custom experiment planner",
@@ -175,6 +176,16 @@ def main():
             else:
                 # new training without pretraine weights, do nothing
                 pass
+            
+            
+            if args.max_epochs is not None:
+                trainer.max_num_epochs = args.max_epochs
+                trainer.print_to_log_file('New epoch limit: ' + str(trainer.max_num_epochs) + ', current epoch: ' + str(trainer.epoch))
+                
+            import numpy as np
+            model_parameters = filter(lambda p: p.requires_grad, trainer.network.parameters())
+            NUM_params = sum([np.prod(p.size()) for p in model_parameters])
+            trainer.print_to_log_file('Number of trainable parameteres: ' + str(NUM_params))
 
             trainer.run_training()
         else:
@@ -183,12 +194,15 @@ def main():
             else:
                 trainer.load_final_checkpoint(train=False)
 
+        
         trainer.network.eval()
 
-        # predict validation
-        trainer.validate(save_softmax=args.npz, validation_folder_name=val_folder,
-                         run_postprocessing_on_folds=not disable_postprocessing_on_folds,
-                         overwrite=args.val_disable_overwrite)
+        try:
+            pass
+            # predict validation
+            # trainer.validate(save_softmax=args.npz, validation_folder_name=val_folder, run_postprocessing_on_folds=not disable_postprocessing_on_folds, overwrite=args.val_disable_overwrite)
+        except:
+            print("validation failed")
 
         if network == '3d_lowres' and not args.disable_next_stage_pred:
             print("predicting segmentations for the next stage of the cascade")

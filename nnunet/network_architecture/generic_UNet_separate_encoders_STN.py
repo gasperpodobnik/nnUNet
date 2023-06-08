@@ -96,8 +96,6 @@ class STN_block(nn.Module):
         ]
         # Spatial transformer localization-network
         self.localization = nn.Sequential(*ops_list[level*2:])
-        
-        # TODO: correct the number of input channels
 
         # Regressor for the 3 * 2 affine matrix
         self.flatten_len = self.input_feature_channels * 10 * 12 * 12

@@ -58,23 +58,48 @@ class ConvDropoutNormNonlin(nn.Module):
             self.dropout = self.dropout_op(**self.dropout_op_kwargs)
         else:
             self.dropout = None
-        self.instnorm = self.norm_op(output_channels, **self.norm_op_kwargs)
+        self.instnorm_CT = self.norm_op(output_channels, **self.norm_op_kwargs)
+        self.instnorm_MR = self.norm_op(output_channels, **self.norm_op_kwargs)
         self.lrelu = self.nonlin(**self.nonlin_kwargs)
 
-    def forward(self, x):
+    def forward(self, x, isCT=True):
         x = self.conv(x)
         if self.dropout is not None:
             x = self.dropout(x)
-        return self.lrelu(self.instnorm(x))
+        if isCT:
+            x = self.instnorm_CT(x)
+        else:
+            x = self.instnorm_MR(x)
+        return self.lrelu(x)
 
 
 class ConvDropoutNonlinNorm(ConvDropoutNormNonlin):
-    def forward(self, x):
+    def forward(self, x, isCT=True):
         x = self.conv(x)
         if self.dropout is not None:
             x = self.dropout(x)
-        return self.instnorm(self.lrelu(x))
+        x = self.lrelu(x)
+        if isCT:
+            x = self.instnorm_CT(x)
+        else:
+            x = self.instnorm_MR(x)
+        return x
 
+class MultiInputModule(nn.Module):
+    def __init__(self, module_list):
+        super(MultiInputModule, self).__init__()
+        self.module_list = nn.ModuleList(module_list)
+        
+    def forward(self, *inputs):
+        # Perform forward pass through each module in the list
+        x = inputs[0]
+        isCT = inputs[1]
+        for module in self.module_list:
+            x = module(x, isCT)
+        return x
+    
+    def __getitem__(self, index):
+        return self.module_list[index]
 
 class StackedConvLayers(nn.Module):
     def __init__(self, input_feature_channels, output_feature_channels, num_convs,
@@ -128,8 +153,9 @@ class StackedConvLayers(nn.Module):
             self.conv_kwargs_first_conv = conv_kwargs
 
         super(StackedConvLayers, self).__init__()
-        self.blocks = nn.Sequential(
-            *([basic_block(input_feature_channels, output_feature_channels, self.conv_op,
+        # self.blocks = nn.Sequential(*
+        self.blocks = MultiInputModule(
+            ([basic_block(input_feature_channels, output_feature_channels, self.conv_op,
                            self.conv_kwargs_first_conv,
                            self.norm_op, self.norm_op_kwargs, self.dropout_op, self.dropout_op_kwargs,
                            self.nonlin, self.nonlin_kwargs)] +
@@ -138,8 +164,8 @@ class StackedConvLayers(nn.Module):
                            self.norm_op, self.norm_op_kwargs, self.dropout_op, self.dropout_op_kwargs,
                            self.nonlin, self.nonlin_kwargs) for _ in range(num_convs - 1)]))
 
-    def forward(self, x):
-        return self.blocks(x)
+    def forward(self, x, isCT=True):
+        return self.blocks(x, isCT)
 
 
 def print_module_training_status(module):
@@ -164,7 +190,7 @@ class Upsample(nn.Module):
                                          align_corners=self.align_corners)
 
 
-class Generic_UNet_separate_encoders(SegmentationNetwork):
+class Generic_UNet_Dou(SegmentationNetwork):
     DEFAULT_BATCH_SIZE_3D = 2
     DEFAULT_PATCH_SIZE_3D = (64, 192, 160)
     SPACING_FACTOR_BETWEEN_STAGES = 2
@@ -200,7 +226,7 @@ class Generic_UNet_separate_encoders(SegmentationNetwork):
 
         Questions? -> f.isensee@dkfz.de
         """
-        super(Generic_UNet_separate_encoders, self).__init__()
+        super(Generic_UNet_Dou, self).__init__()
         self.convolutional_upsampling = convolutional_upsampling
         self.convolutional_pooling = convolutional_pooling
         self.upscale_logits = upscale_logits
@@ -260,21 +286,15 @@ class Generic_UNet_separate_encoders(SegmentationNetwork):
                 self.max_num_features = self.MAX_FILTERS_2D
         else:
             self.max_num_features = max_num_features
-            
 
-        self.modality_num = input_channels
-        self.max_num_features = self.max_num_features // self.modality_num
         self.conv_blocks_context = []
-        self.td = []
-        for i in range(self.modality_num):
-            self.conv_blocks_context.append([])
-            self.td.append([])
         self.conv_blocks_localization = []
+        self.td = []
         self.tu = []
         self.seg_outputs = []
 
-        input_features = 1
-        output_features = base_num_features // self.modality_num
+        output_features = base_num_features
+        input_features = input_channels
 
         for d in range(num_pool):
             # determine the first stride
@@ -286,14 +306,13 @@ class Generic_UNet_separate_encoders(SegmentationNetwork):
             self.conv_kwargs['kernel_size'] = self.conv_kernel_sizes[d]
             self.conv_kwargs['padding'] = self.conv_pad_sizes[d]
             # add convolutions
-            for i_encoder in range(self.modality_num):
-                self.conv_blocks_context[i_encoder].append(StackedConvLayers(input_features, output_features, num_conv_per_stage,
-                                                                self.conv_op, self.conv_kwargs, self.norm_op,
-                                                                self.norm_op_kwargs, self.dropout_op,
-                                                                self.dropout_op_kwargs, self.nonlin, self.nonlin_kwargs,
-                                                                first_stride, basic_block=basic_block))
-                if not self.convolutional_pooling:
-                    self.td[i_encoder].append(pool_op(pool_op_kernel_sizes[d]))
+            self.conv_blocks_context.append(StackedConvLayers(input_features, output_features, num_conv_per_stage,
+                                                              self.conv_op, self.conv_kwargs, self.norm_op,
+                                                              self.norm_op_kwargs, self.dropout_op,
+                                                              self.dropout_op_kwargs, self.nonlin, self.nonlin_kwargs,
+                                                              first_stride, basic_block=basic_block))
+            if not self.convolutional_pooling:
+                self.td.append(pool_op(pool_op_kernel_sizes[d]))
             input_features = output_features
             output_features = int(np.round(output_features * feat_map_mul_on_downscale))
 
@@ -312,19 +331,18 @@ class Generic_UNet_separate_encoders(SegmentationNetwork):
         if self.convolutional_upsampling:
             final_num_features = output_features
         else:
-            final_num_features = self.conv_blocks_context[0][-1].output_channels*self.modality_num
+            final_num_features = self.conv_blocks_context[-1].output_channels
 
-        input_features *= self.modality_num
-        output_features *= self.modality_num
         self.conv_kwargs['kernel_size'] = self.conv_kernel_sizes[num_pool]
         self.conv_kwargs['padding'] = self.conv_pad_sizes[num_pool]
-        self.bottleneck = nn.Sequential(
-            StackedConvLayers(input_features, output_features, num_conv_per_stage - 1, self.conv_op, self.conv_kwargs,
+        # self.conv_blocks_context.append(nn.Sequential(
+        self.conv_blocks_context.append(MultiInputModule(
+            (StackedConvLayers(input_features, output_features, num_conv_per_stage - 1, self.conv_op, self.conv_kwargs,
                               self.norm_op, self.norm_op_kwargs, self.dropout_op, self.dropout_op_kwargs, self.nonlin,
                               self.nonlin_kwargs, first_stride, basic_block=basic_block),
             StackedConvLayers(output_features, final_num_features, 1, self.conv_op, self.conv_kwargs,
                               self.norm_op, self.norm_op_kwargs, self.dropout_op, self.dropout_op_kwargs, self.nonlin,
-                              self.nonlin_kwargs, basic_block=basic_block))
+                              self.nonlin_kwargs, basic_block=basic_block))))
 
         # if we don't want to do dropout in the localization pathway then we set the dropout prob to zero here
         if not dropout_in_localization:
@@ -334,14 +352,15 @@ class Generic_UNet_separate_encoders(SegmentationNetwork):
         # now lets build the localization pathway
         for u in range(num_pool):
             nfeatures_from_down = final_num_features
-            nfeatures_from_skip = self.conv_blocks_context[0][-(1 + u)].output_channels*self.modality_num
+            nfeatures_from_skip = self.conv_blocks_context[
+                -(2 + u)].output_channels  # self.conv_blocks_context[-1] is bottleneck, so start with -2
             n_features_after_tu_and_concat = nfeatures_from_skip * 2
 
             # the first conv reduces the number of features to match those of skip
             # the following convs work on that number of features
             # if not convolutional upsampling then the final conv reduces the num of features again
             if u != num_pool - 1 and not self.convolutional_upsampling:
-                final_num_features = self.conv_blocks_context[0][-(2 + u)].output_channels*self.modality_num
+                final_num_features = self.conv_blocks_context[-(3 + u)].output_channels
             else:
                 final_num_features = nfeatures_from_skip
 
@@ -353,13 +372,14 @@ class Generic_UNet_separate_encoders(SegmentationNetwork):
 
             self.conv_kwargs['kernel_size'] = self.conv_kernel_sizes[- (u + 1)]
             self.conv_kwargs['padding'] = self.conv_pad_sizes[- (u + 1)]
-            self.conv_blocks_localization.append(nn.Sequential(
-                StackedConvLayers(n_features_after_tu_and_concat, nfeatures_from_skip, num_conv_per_stage - 1,
+            # self.conv_blocks_localization.append(nn.Sequential(
+            self.conv_blocks_localization.append(MultiInputModule(
+                (StackedConvLayers(n_features_after_tu_and_concat, nfeatures_from_skip, num_conv_per_stage - 1,
                                   self.conv_op, self.conv_kwargs, self.norm_op, self.norm_op_kwargs, self.dropout_op,
                                   self.dropout_op_kwargs, self.nonlin, self.nonlin_kwargs, basic_block=basic_block),
                 StackedConvLayers(nfeatures_from_skip, final_num_features, 1, self.conv_op, self.conv_kwargs,
                                   self.norm_op, self.norm_op_kwargs, self.dropout_op, self.dropout_op_kwargs,
-                                  self.nonlin, self.nonlin_kwargs, basic_block=basic_block)
+                                  self.nonlin, self.nonlin_kwargs, basic_block=basic_block))
             ))
 
         for ds in range(len(self.conv_blocks_localization)):
@@ -380,8 +400,8 @@ class Generic_UNet_separate_encoders(SegmentationNetwork):
 
         # register all modules properly
         self.conv_blocks_localization = nn.ModuleList(self.conv_blocks_localization)
-        self.conv_blocks_context = nn.ModuleList([nn.ModuleList(i) for i in self.conv_blocks_context])
-        self.td = nn.ModuleList([nn.ModuleList(i) for i in self.td])
+        self.conv_blocks_context = nn.ModuleList(self.conv_blocks_context)
+        self.td = nn.ModuleList(self.td)
         self.tu = nn.ModuleList(self.tu)
         self.seg_outputs = nn.ModuleList(self.seg_outputs)
         if self.upscale_logits:
@@ -392,30 +412,21 @@ class Generic_UNet_separate_encoders(SegmentationNetwork):
             self.apply(self.weightInitializer)
             # self.apply(print_module_training_status)
 
-    def forward(self, x):
+    def forward(self, x, isCT=True):
         skips = []
         seg_outputs = []
-        
-        x = list(torch.chunk(x, self.modality_num, dim=1))
-        for d in range(len(self.conv_blocks_context[0])):
-            for channel in range(self.modality_num):
-                x[channel] = self.conv_blocks_context[channel][d](x[channel])
-            skips.append(torch.cat(x, dim=1))
+        for d in range(len(self.conv_blocks_context) - 1):
+            x = self.conv_blocks_context[d](x, isCT)
+            skips.append(x)
             if not self.convolutional_pooling:
-                for channel in range(self.modality_num):
-                    x[channel] = self.td[channel][d](x[channel])
+                x = self.td[d](x)
 
-        x = torch.cat(x, dim=1)
-        x = self.bottleneck(x)
-        # a = torch.mean(torch.pow(x, 2), dim=1, keepdim=True)
-        # from nnunet.training.loss_functions.DistillKL import DistillKL
-        # DistillKL()(a, a*2)
-        
+        x = self.conv_blocks_context[-1](x, isCT)
 
         for u in range(len(self.tu)):
             x = self.tu[u](x)
             x = torch.cat((x, skips[-(u + 1)]), dim=1)
-            x = self.conv_blocks_localization[u](x)
+            x = self.conv_blocks_localization[u](x, isCT)
             seg_outputs.append(self.final_nonlin(self.seg_outputs[u](x)))
 
         if self._deep_supervision and self.do_ds:

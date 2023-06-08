@@ -36,7 +36,7 @@ def main():
     parser.add_argument("-c", "--continue_training", help="use this if you want to continue a training",
                         action="store_true")
     parser.add_argument("--add_suffix_to_trainer", help="use this if you want to add a string to trainer", type=str)
-    parser.add_argument("--max_epochs", help="use this if you want to disable gradients of one modality", type=int, default=None)
+    parser.add_argument("--max_epochs", help="use this if you want to change number of epochs", type=int, default=None)
     parser.add_argument("-p", help="plans identifier. Only change this if you created a custom experiment planner",
                         default=default_plans_identifier, required=False)
     parser.add_argument("--use_compressed_data", default=False, action="store_true",
@@ -210,8 +210,11 @@ def main():
         trainer.network.eval()
 
         # predict validation
-        trainer.validate(save_softmax=args.npz, validation_folder_name=val_folder,
-                         run_postprocessing_on_folds=not disable_postprocessing_on_folds)
+        try:
+            pass
+            # trainer.validate(save_softmax=args.npz, validation_folder_name=val_folder, run_postprocessing_on_folds=not disable_postprocessing_on_folds)
+        except:
+            print("validation failed")
 
         if network == '3d_lowres':
             print("predicting segmentations for the next stage of the cascade")

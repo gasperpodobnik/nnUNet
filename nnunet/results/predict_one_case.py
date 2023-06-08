@@ -19,7 +19,7 @@ from typing import Tuple, Union, List
 
 import numpy as np
 from batchgenerators.augmentations.utils import resize_segmentation
-from nnunet.inference.segmentation_export import (
+from nnunet.results.cutom_segmentation_export import (
     save_segmentation_nifti_from_softmax,
     save_segmentation_nifti,
 )
@@ -162,21 +162,14 @@ def predict_cases(
     list_of_lists,
     output_filenames,
     folds,
-    save_npz,
     num_threads_preprocessing,
-    num_threads_nifti_save,
     segs_from_prev_stage=None,
     do_tta=True,
     mixed_precision=True,
-    overwrite_existing=False,
     all_in_gpu=False,
     step_size=0.5,
-    checkpoint_name="model_final_checkpoint",
+    checkpoint_name="model_best",
     segmentation_export_kwargs: dict = None,
-    disable_postprocessing: bool = False,
-    MODALITY_to_mask=None,
-    MODALITY_idxs_to_keep=None,
-    MODALITY_idxs_to_delete=None
 ):
     """
     :param segmentation_export_kwargs:
@@ -194,41 +187,9 @@ def predict_cases(
     :param mixed_precision: if None then we take no action. If True/False we overwrite what the model has in its init
     :return:
     """
-    assert len(list_of_lists) == len(output_filenames)
-    if segs_from_prev_stage is not None:
-        assert len(segs_from_prev_stage) == len(output_filenames)
+    assert len(list_of_lists) == len(output_filenames) == 1, 'This is a single case function.'
 
-    pool = Pool(num_threads_nifti_save)
-    results = []
-
-    cleaned_output_files = []
-    for o in output_filenames:
-        dr, f = os.path.split(o)
-        if len(dr) > 0:
-            maybe_mkdir_p(dr)
-        if not f.endswith(".nii.gz"):
-            f, _ = os.path.splitext(f)
-            f = f + ".nii.gz"
-        cleaned_output_files.append(join(dr, f))
-
-    if not overwrite_existing:
-        print("number of cases:", len(list_of_lists))
-        # if save_npz=True then we should also check for missing npz files
-        not_done_idx = [
-            i
-            for i, j in enumerate(cleaned_output_files)
-            if (not isfile(j)) or (save_npz and not isfile(j[:-7] + ".npz"))
-        ]
-
-        cleaned_output_files = [cleaned_output_files[i] for i in not_done_idx]
-        list_of_lists = [list_of_lists[i] for i in not_done_idx]
-        if segs_from_prev_stage is not None:
-            segs_from_prev_stage = [segs_from_prev_stage[i] for i in not_done_idx]
-
-        print(
-            "number of cases that still need to be predicted:",
-            len(cleaned_output_files),
-        )
+    cleaned_output_files = output_filenames
 
     print("emptying cuda cache")
     torch.cuda.empty_cache()
@@ -237,21 +198,6 @@ def predict_cases(
     trainer, params = load_model_and_checkpoint_files(
         model, folds, mixed_precision=mixed_precision, checkpoint_name=checkpoint_name
     )
-    # trainer.plans['num_modalities']=3
-    # trainer.plans['modalities']={0: 'CT', 1: 'MR_T1', 2: 'MR_T2'}
-    # from collections import OrderedDict
-    # trainer.plans['normalization_schemes']=OrderedDict([(0, 'CT'), (1, 'nonCT'), (2, 'nonCT')])
-    # trainer.normalization_schemes=OrderedDict([(0, 'CT'), (1, 'nonCT'), (2, 'nonCT')])
-    # trainer.plans['use_mask_for_norm']=OrderedDict([(0, False), (1, False), (2, False)])
-    # trainer.use_mask_for_norm=OrderedDict([(0, False), (1, False), (2, False)])
-    original_num_modalities = trainer.plans['num_modalities']
-    if MODALITY_idxs_to_delete is not None:
-        logging.warning(f'Special procedure for normalization, be sure that this is intentional!')
-        trainer.plans['num_modalities'] -= len(MODALITY_idxs_to_delete)
-        for i in MODALITY_idxs_to_delete:
-            del trainer.plans['modalities'][i]
-            del trainer.plans['normalization_schemes'][i]
-            del trainer.plans['use_mask_for_norm'][i]
         
         
     
@@ -294,17 +240,6 @@ def predict_cases(
             os.remove(d)
             d = data
             
-        if MODALITY_to_mask is not None:
-            d[MODALITY_to_mask] = 0
-            print(f'MASKING modality with index {MODALITY_to_mask}')
-        if d.shape[0] < original_num_modalities:
-            d = np.concatenate([d, np.zeros((original_num_modalities-d.shape[0], d.shape[1], d.shape[2], d.shape[3]))], axis=0)
-            logging.warning(f'Padding with zeros to {original_num_modalities} modalities!')
-        if MODALITY_idxs_to_keep is not None:
-            if isinstance(MODALITY_idxs_to_keep, list):
-                MODALITY_idxs_to_keep = tuple(MODALITY_idxs_to_keep)
-            d = d[tuple([MODALITY_idxs_to_keep])]
-            
 
         print("predicting", output_filename)
         trainer.load_checkpoint_ram(params[0], False)
@@ -340,15 +275,6 @@ def predict_cases(
             transpose_backward = trainer.plans.get("transpose_backward")
             softmax = softmax.transpose([0] + [i + 1 for i in transpose_backward])
 
-        if save_npz:
-            npz_file = output_filename[:-7] + ".npz"
-        else:
-            npz_file = None
-
-        if hasattr(trainer, "regions_class_order"):
-            region_class_order = trainer.regions_class_order
-        else:
-            region_class_order = None
 
         """There is a problem with python process communication that prevents us from communicating objects 
         larger than 2 GB between processes (basically when the length of the pickle string that will be sent is 
@@ -369,62 +295,19 @@ def predict_cases(
             np.save(output_filename[:-7] + ".npy", softmax)
             softmax = output_filename[:-7] + ".npy"
 
-        results.append(
-            pool.starmap_async(
-                save_segmentation_nifti_from_softmax,
-                (
-                    (
-                        softmax,
+        result = save_segmentation_nifti_from_softmax(softmax,
                         output_filename,
                         dct,
                         interpolation_order,
-                        region_class_order,
                         None,
                         None,
-                        npz_file,
+                        None,
+                        None,
                         None,
                         force_separate_z,
                         interpolation_order_z,
-                    ),
-                ),
-            )
-        )
-
-    print("inference done. Now waiting for the segmentation export to finish...")
-    _ = [i.get() for i in results]
-    # now apply postprocessing
-    # first load the postprocessing properties if they are present. Else raise a well visible warning
-    if not disable_postprocessing:
-        results = []
-        pp_file = join(model, "postprocessing.json")
-        if isfile(pp_file):
-            print("postprocessing...")
-            shutil.copy(pp_file, os.path.abspath(os.path.dirname(output_filenames[0])))
-            # for_which_classes stores for which of the classes everything but the largest connected component needs to be
-            # removed
-            for_which_classes, min_valid_obj_size = load_postprocessing(pp_file)
-            results.append(
-                pool.starmap_async(
-                    load_remove_save,
-                    zip(
-                        output_filenames,
-                        output_filenames,
-                        [for_which_classes] * len(output_filenames),
-                        [min_valid_obj_size] * len(output_filenames),
-                    ),
-                )
-            )
-            _ = [i.get() for i in results]
-        else:
-            print(
-                "WARNING! Cannot run postprocessing because the postprocessing file is missing. Make sure to run "
-                "consolidate_folds in the output folder of the model first!\nThe folder you need to run this in is "
-                "%s" % model
-            )
-
-    pool.close()
-    pool.join()
-    
+                    )
+        return result
 
 def predict_cases_fast(
     model,

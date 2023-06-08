@@ -164,7 +164,7 @@ class Upsample(nn.Module):
                                          align_corners=self.align_corners)
 
 
-class Generic_UNet_separate_encoders(SegmentationNetwork):
+class Generic_UNet_separate_encoders_sum_fusion(SegmentationNetwork):
     DEFAULT_BATCH_SIZE_3D = 2
     DEFAULT_PATCH_SIZE_3D = (64, 192, 160)
     SPACING_FACTOR_BETWEEN_STAGES = 2
@@ -200,7 +200,7 @@ class Generic_UNet_separate_encoders(SegmentationNetwork):
 
         Questions? -> f.isensee@dkfz.de
         """
-        super(Generic_UNet_separate_encoders, self).__init__()
+        super(Generic_UNet_separate_encoders_sum_fusion, self).__init__()
         self.convolutional_upsampling = convolutional_upsampling
         self.convolutional_pooling = convolutional_pooling
         self.upscale_logits = upscale_logits
@@ -260,10 +260,8 @@ class Generic_UNet_separate_encoders(SegmentationNetwork):
                 self.max_num_features = self.MAX_FILTERS_2D
         else:
             self.max_num_features = max_num_features
-            
 
         self.modality_num = input_channels
-        self.max_num_features = self.max_num_features // self.modality_num
         self.conv_blocks_context = []
         self.td = []
         for i in range(self.modality_num):
@@ -274,7 +272,7 @@ class Generic_UNet_separate_encoders(SegmentationNetwork):
         self.seg_outputs = []
 
         input_features = 1
-        output_features = base_num_features // self.modality_num
+        output_features = base_num_features
 
         for d in range(num_pool):
             # determine the first stride
@@ -312,10 +310,9 @@ class Generic_UNet_separate_encoders(SegmentationNetwork):
         if self.convolutional_upsampling:
             final_num_features = output_features
         else:
-            final_num_features = self.conv_blocks_context[0][-1].output_channels*self.modality_num
+            final_num_features = self.conv_blocks_context[0][-1].output_channels
 
-        input_features *= self.modality_num
-        output_features *= self.modality_num
+
         self.conv_kwargs['kernel_size'] = self.conv_kernel_sizes[num_pool]
         self.conv_kwargs['padding'] = self.conv_pad_sizes[num_pool]
         self.bottleneck = nn.Sequential(
@@ -334,14 +331,14 @@ class Generic_UNet_separate_encoders(SegmentationNetwork):
         # now lets build the localization pathway
         for u in range(num_pool):
             nfeatures_from_down = final_num_features
-            nfeatures_from_skip = self.conv_blocks_context[0][-(1 + u)].output_channels*self.modality_num
+            nfeatures_from_skip = self.conv_blocks_context[0][-(1 + u)].output_channels
             n_features_after_tu_and_concat = nfeatures_from_skip * 2
 
             # the first conv reduces the number of features to match those of skip
             # the following convs work on that number of features
             # if not convolutional upsampling then the final conv reduces the num of features again
             if u != num_pool - 1 and not self.convolutional_upsampling:
-                final_num_features = self.conv_blocks_context[0][-(2 + u)].output_channels*self.modality_num
+                final_num_features = self.conv_blocks_context[0][-(2 + u)].output_channels
             else:
                 final_num_features = nfeatures_from_skip
 
@@ -395,22 +392,20 @@ class Generic_UNet_separate_encoders(SegmentationNetwork):
     def forward(self, x):
         skips = []
         seg_outputs = []
-        
         x = list(torch.chunk(x, self.modality_num, dim=1))
         for d in range(len(self.conv_blocks_context[0])):
             for channel in range(self.modality_num):
                 x[channel] = self.conv_blocks_context[channel][d](x[channel])
-            skips.append(torch.cat(x, dim=1))
+            
+            # multiply feature maps of different modalities
+            skips.append(torch.stack(x).sum(dim=0)/float(self.modality_num))
+            
             if not self.convolutional_pooling:
                 for channel in range(self.modality_num):
                     x[channel] = self.td[channel][d](x[channel])
 
-        x = torch.cat(x, dim=1)
+        x = torch.stack(x).sum(dim=0)/float(self.modality_num)
         x = self.bottleneck(x)
-        # a = torch.mean(torch.pow(x, 2), dim=1, keepdim=True)
-        # from nnunet.training.loss_functions.DistillKL import DistillKL
-        # DistillKL()(a, a*2)
-        
 
         for u in range(len(self.tu)):
             x = self.tu[u](x)

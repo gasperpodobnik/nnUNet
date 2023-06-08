@@ -13,16 +13,12 @@
 #    limitations under the License.
 
 
-from batchgenerators.utilities.file_and_folder_operations import *
-import math
+from nnunet.training.network_training.MAMLTrainerV2 import MAMLTrainerV2
 
-from nnunet.training.network_training.nnUNetTrainerV2_DP import nnUNetTrainerV2_DP
-from nnunet.training.learning_rate.poly_lr import poly_lr
-import numpy as np
-
-class nnUNetTrainerV2_DPnoMirroringAxis2redRot(nnUNetTrainerV2_DP):    
+pi = 3.141592653589793
+class nnUNetTrainerV2_noMirroringAxis2redRot_MAML(MAMLTrainerV2):
     def setup_DA_params(self):
         super().setup_DA_params()
         self.data_aug_params["mirror_axes"] = (0, 1)
-        self.data_aug_params["rotation_x"] = (-90/180*math.pi, 90/180*math.pi)
+        self.data_aug_params["rotation_x"] = (-90/180*pi, 90/180*pi)
         print("rotation_x", self.data_aug_params["rotation_x"])

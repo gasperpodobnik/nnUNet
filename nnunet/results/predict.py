@@ -16,7 +16,7 @@ import pandas as pd
 
 sys.path.append(r"/media/medical/gasperp/projects")
 sys.path.append(r"/media/medical/gasperp/projects/surface-distance")
-from surface_distance import compute_metrics_deepmind
+from SegmentationEvalMetrics import compute_metrics_multilabel
 
 
 
@@ -85,8 +85,8 @@ class nnUNet_Prediction_Arg_Parser(object):
         self.parser.add_argument(
             "--checkpoint_name",
             type=str,
-            default="model_final_checkpoint",  # this means that 'model_final_checkpoint.model.pkl' is used for inference
-            help="nnU-Net model to use: default is final model, but in case inference is done before model training is complete you may want to specifify 'model_best' or 'model_latest'",
+            default="model_best",  # this means that '<ckp-name>.model.pkl' is used for inference
+            help="Default is model that best performs on validation set. Options: `model_final_checkpoint`, `model_best` or `model_latest`",
         )
         self.parser.add_argument(
             "--phases_to_predict", 
@@ -118,7 +118,7 @@ class nnUNet_Prediction_Arg_Parser(object):
             "--mode", type=str, default="normal", help="nnUNet_predict parameter",
         )
         self.parser.add_argument(
-            "--csv_name", type=str, default="results", help="",
+            "--csv_name", type=str, default="results_new", help="",
         )
         self.parser.add_argument(
             "--mask_modality", type=str, default=None, help="options: CT, MR,... modality",
@@ -292,6 +292,8 @@ class Custom_nnUNet_Predict(object):
             self.config_str += f"_E-{self.epoch}"
         if self.mask_modality:
             self.config_str += f"_masked-{self.mask_modality}"
+        if not self.do_tta:
+            self.config_str += "_noTTA"
             
         
         
@@ -392,7 +394,7 @@ class Custom_nnUNet_Predict(object):
         }
         logging.debug(f"Found the following organs and labels GT dict: {self.organs_labels_dict_gt}")
         logging.debug(f"Found the following organs and labels PRED dict: {self.organs_labels_dict_pred}")
-        self.compute_metrics = compute_metrics_deepmind(
+        self.compute_metrics = compute_metrics_multilabel(
             organs_labels_dict_gt=self.organs_labels_dict_gt, organs_labels_dict_pred=self.organs_labels_dict_pred
         )
         self.get_settings_info()
@@ -658,7 +660,11 @@ class Custom_nnUNet_Predict(object):
         
         assert self.mode == 'normal', NotImplementedError('current implementation for one-by-one_method supports only normal mode')
         
-        self.expected_num_modalities = load_pickle(join(self.trainer_class_and_plans_dir, "plans.pkl"))["num_modalities"]
+        # self.expected_num_modalities = load_pickle(join(self.trainer_class_and_plans_dir, "plans.pkl"))["num_modalities"]
+        self.expected_num_modalities = len(self.dataset_dataset_json_dict['modality'])
+        self.MODALITY_idxs_to_delete = [int(i) for i in self.model_dataset_json_dict['modality'] if i not in self.dataset_dataset_json_dict['modality']]
+        if len(self.MODALITY_idxs_to_delete) == 0:
+            self.MODALITY_idxs_to_delete = None
 
         for self.phase, self.img_dir, _dict_tmp in self.iterate_image_source_dirs():
             case_ids = check_input_folder_and_return_caseIDs(
@@ -681,6 +687,7 @@ class Custom_nnUNet_Predict(object):
             ]
 
             for self.input_filename, self.output_filename, self.gt_filename in zip(list_of_lists, output_files, gt_files):
+                logging.info(f'Predicting {self.input_filename}')
                 self.predict_single_case()
                     
     def predict_single_case(self):
@@ -706,7 +713,8 @@ class Custom_nnUNet_Predict(object):
                     checkpoint_name=self.checkpoint_name,
                     segmentation_export_kwargs=self.segmentation_export_kwargs,
                     MODALITY_to_mask=self.MODALITY_to_mask,
-                    MODALITY_idxs_to_keep=self.MODALITY_idxs_to_keep
+                    MODALITY_idxs_to_keep=self.MODALITY_idxs_to_keep,
+                    MODALITY_idxs_to_delete=self.MODALITY_idxs_to_delete
                 )
             else:
                 logging.info('Skipping inference, because output file exists')
