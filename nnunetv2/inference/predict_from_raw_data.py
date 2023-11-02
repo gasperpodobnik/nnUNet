@@ -493,7 +493,7 @@ class nnUNetPredictor(object):
         num_processes_segmentation_export: int = default_num_processes,
     ):
         """
-        each element returned by data_iterator must be a dict with 'data', 'ofile' and 'data_properites' keys!
+        each element returned by data_iterator must be a dict with 'data', 'ofile' and 'data_properties' keys!
         If 'ofile' is None, the result will be returned instead of written to a file
         """
         with multiprocessing.get_context("spawn").Pool(
@@ -516,7 +516,7 @@ class nnUNetPredictor(object):
 
                 print(f"perform_everything_on_gpu: {self.perform_everything_on_gpu}")
 
-                properties = preprocessed["data_properites"]
+                properties = preprocessed['data_properties']
 
                 # let's not get into a runaway situation where the GPU predicts so fast that the disk has to b swamped with
                 # npy files
@@ -524,7 +524,7 @@ class nnUNetPredictor(object):
                     export_pool, worker_list, r, allowed_num_queued=2
                 )
                 while not proceed:
-                    print("sleeping")
+                    # print('sleeping')
                     sleep(0.1)
                     proceed = not check_workers_alive_and_busy(
                         export_pool, worker_list, r, allowed_num_queued=2
@@ -624,24 +624,16 @@ class nnUNetPredictor(object):
         if self.verbose:
             print("resampling to original shape")
         if output_file_truncated is not None:
-            export_prediction_from_logits(
-                predicted_logits,
-                dct["data_properites"],
-                self.configuration_manager,
-                self.plans_manager,
-                self.dataset_json,
-                output_file_truncated,
-                save_or_return_probabilities,
-            )
+            export_prediction_from_logits(predicted_logits, dct['data_properties'], self.configuration_manager,
+                                          self.plans_manager, self.dataset_json, output_file_truncated,
+                                          save_or_return_probabilities)
         else:
-            ret = convert_predicted_logits_to_segmentation_with_correct_shape(
-                predicted_logits,
-                self.plans_manager,
-                self.configuration_manager,
-                self.label_manager,
-                dct["data_properites"],
-                return_probabilities=save_or_return_probabilities,
-            )
+            ret = convert_predicted_logits_to_segmentation_with_correct_shape(predicted_logits, self.plans_manager,
+                                                                              self.configuration_manager,
+                                                                              self.label_manager,
+                                                                              dct['data_properties'],
+                                                                              return_probabilities=
+                                                                              save_or_return_probabilities)
             if save_or_return_probabilities:
                 return ret[0], ret[1]
             else:
@@ -784,9 +776,7 @@ class nnUNetPredictor(object):
         if mirror_axes is not None:
             # check for invalid numbers in mirror_axes
             # x should be 5d for 3d images and 4d for 2d. so the max value of mirror_axes cannot exceed len(x.shape) - 3
-            assert (
-                max(mirror_axes) <= len(x.shape) - 3
-            ), "mirror_axes does not match the dimension of the input!"
+            assert max(mirror_axes) <= x.ndim - 3, 'mirror_axes does not match the dimension of the input!'
 
             num_predictons = 2 ** len(mirror_axes)
             if 0 in mirror_axes:
@@ -824,12 +814,8 @@ class nnUNetPredictor(object):
         # is set. Whyyyyyyy. (this is why we don't make use of enabled=False)
         # So autocast will only be active if we have a cuda device.
         with torch.no_grad():
-            with torch.autocast(
-                self.device.type, enabled=True
-            ) if self.device.type == "cuda" else dummy_context():
-                assert (
-                    len(input_image.shape) == 4
-                ), "input_image must be a 4D np.ndarray or torch.Tensor (c, x, y, z)"
+            with torch.autocast(self.device.type, enabled=True) if self.device.type == 'cuda' else dummy_context():
+                assert input_image.ndim == 4, 'input_image must be a 4D np.ndarray or torch.Tensor (c, x, y, z)'
 
                 if self.verbose:
                     print(f"Input shape: {input_image.shape}")
@@ -872,12 +858,9 @@ class nnUNetPredictor(object):
                         data.shape[1:], dtype=torch.half, device=results_device
                     )
                     if self.use_gaussian:
-                        gaussian = compute_gaussian(
-                            tuple(self.configuration_manager.patch_size),
-                            sigma_scale=1.0 / 8,
-                            value_scaling_factor=1000,
-                            device=results_device,
-                        )
+                        gaussian = compute_gaussian(tuple(self.configuration_manager.patch_size), sigma_scale=1. / 8,
+                                                    value_scaling_factor=10,
+                                                    device=results_device)
                 except RuntimeError:
                     # sometimes the stuff is too large for GPUs. In that case fall back to CPU
                     results_device = torch.device("cpu")
@@ -891,12 +874,9 @@ class nnUNetPredictor(object):
                         data.shape[1:], dtype=torch.half, device=results_device
                     )
                     if self.use_gaussian:
-                        gaussian = compute_gaussian(
-                            tuple(self.configuration_manager.patch_size),
-                            sigma_scale=1.0 / 8,
-                            value_scaling_factor=1000,
-                            device=results_device,
-                        )
+                        gaussian = compute_gaussian(tuple(self.configuration_manager.patch_size), sigma_scale=1. / 8,
+                                                    value_scaling_factor=10,
+                                                    device=results_device)
                 finally:
                     empty_cache(self.device)
 
@@ -1255,10 +1235,8 @@ def predict_entry_point():
     if not isdir(args.o):
         maybe_mkdir_p(args.o)
 
-    # slightly passive agressive haha
-    assert (
-        args.part_id < args.num_parts
-    ), "Do you even read the documentation? See nnUNetv2_predict -h."
+    # slightly passive aggressive haha
+    assert args.part_id < args.num_parts, 'Do you even read the documentation? See nnUNetv2_predict -h.'
 
     assert args.device in [
         "cpu",
